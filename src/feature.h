@@ -1195,6 +1195,15 @@
 #endif
 
 /*
+ * +open3		The support for pipe communication with child processes
+ *			requires eval support.
+ *			Currently it works only on Unix.
+ */
+#if !defined(FEAT_EVAL) || !defined(UNIX)
+# undef FEAT_OPEN3
+#endif
+
+/*
  * +signs		Allow signs to be displayed to the left of text lines.
  *			Adds the ":sign" command.
  */

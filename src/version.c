@@ -426,6 +426,11 @@ static char *(features[]) =
 #else
 	"-perl",
 #endif
+#ifdef FEAT_OPEN3
+	"+open3",
+#else
+	"-open3",
+#endif
 #ifdef FEAT_PRINTER
 # ifdef FEAT_POSTSCRIPT
 	"+postscript",

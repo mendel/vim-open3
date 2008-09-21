@@ -11625,6 +11625,9 @@ f_has(argvars, rettv)
 	"perl",
 #endif
 #endif
+#ifdef FEAT_OPEN3
+	"open3",
+#endif
 #ifdef FEAT_PYTHON
 #ifndef DYNAMIC_PYTHON
 	"python",
