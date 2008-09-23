@@ -729,6 +729,16 @@ System functions and manipulation of files:
 	hostname()		name of the system
 	readfile()		read a file into a List of lines
 	writefile()		write a List of lines into a file
+	open3()			spawns child process and returns pipes to it
+	fdtune()		tunes certain parameters of a file descriptor
+	read()			reads bytes from a file descriptor
+	readlines()		reads lines from a file descriptor
+	unread()		unreads bytes back to a file descriptor
+	write()			writes bytes to a file descriptor
+	flush()			flushes write buffer of a file descriptor
+	close()			closes a file descriptor
+	kill()			send signal to a child process
+	cleanup_child()		kills an cleans up a child process
 
 Date and Time:
 	getftime()		get last modification time of a file

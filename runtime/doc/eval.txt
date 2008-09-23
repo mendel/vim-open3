@@ -1667,6 +1667,8 @@ changenr()			Number	current change number
 char2nr( {expr})		Number	ASCII value of first char in {expr}
 cindent( {lnum})		Number	C indent for line {lnum}
 clearmatches()			None	clear all matches
+cleanup_child({pid})		none	kills an cleans up a child process
+close({fd} [, {flush}])		none	closes a file descriptor
 col( {expr})			Number	column nr of cursor or mark
 complete({startcol}, {matches})	String	set Insert mode completion
 complete_add( {expr})		Number	add completion match
@@ -1696,6 +1698,7 @@ exists( {expr})			Number	TRUE if {expr} exists
 extend({expr1}, {expr2} [, {expr3}])
 				List/Dict insert items of {expr2} into {expr1}
 expand( {expr})			String	expand special keywords in {expr}
+fdtune({fd}, {options})		none	tunes certain parameters of a file descriptor
 feedkeys( {string} [, {mode}])	Number	add key sequence to typeahead buffer
 filereadable( {file})		Number	TRUE if {file} is a readable file
 filewritable( {file})		Number	TRUE if {file} is a writable file
@@ -1707,6 +1710,7 @@ findfile( {name}[, {path}[, {count}]])
 				String	find file {name} in {path}
 float2nr( {expr})		Number	convert Float {expr} to a Number
 floor( {expr})			Float	round {expr} down
+flush( {fd} [, {timeout}])	Number	flushes write buffer of a file descriptor
 fnameescape( {fname})		String	escape special characters in {fname}
 fnamemodify( {fname}, {mods})	String	modify file name
 foldclosed( {lnum})		Number	first line of fold at {lnum} if closed
@@ -1778,6 +1782,7 @@ islocked( {expr})		Number	TRUE if {expr} is locked
 items( {dict})			List	key-value pairs in {dict}
 join( {list} [, {sep}])		String	join {list} items into one String
 keys( {dict})			List	keys in {dict}
+kill({pid}, {signal})		none	send signal to a child process
 len( {expr})			Number	the length of {expr}
 libcall( {lib}, {func}, {arg})	String	call {func} in library {lib} with {arg}
 libcallnr( {lib}, {func}, {arg})  Number  idem, but return a Number
@@ -1810,6 +1815,8 @@ mkdir({name} [, {path} [, {prot}]])
 mode( [expr])			String	current editing mode
 nextnonblank( {lnum})		Number	line nr of non-blank line >= {lnum}
 nr2char( {expr})		String	single char with ASCII value {expr}
+open3({command} [, {args} [, {options}]])
+				Dict	spawns child process and returns pipes to it
 pathshorten( {expr})		String	shorten directory names in a path
 pow( {x}, {y})			Float	{x} to the power of {y}
 prevnonblank( {lnum})		Number	line nr of non-blank line <= {lnum}
@@ -1817,6 +1824,10 @@ printf( {fmt}, {expr1}...)	String	format text
 pumvisible()			Number	whether popup menu is visible
 range( {expr} [, {max} [, {stride}]])
 				List	items from {expr} to {max}
+read({fd} [, {minbytes} [, {maxbytes} [, {timeout}]]])
+				String	reads bytes from a file descriptor
+readlines({fd} [, {minlines} [, {maxlines} [, {timeout}]]])
+				List	reads lines from a file descriptor
 readfile({fname} [, {binary} [, {max}]])
 				List	get list of lines from file {fname}
 reltime( [{start} [, {end}]])	List	get time value
@@ -1908,6 +1919,7 @@ tr( {src}, {fromstr}, {tostr})	String	translate chars of {src} in {fromstr}
 					to chars in {tostr}
 trunc( {expr}			Float	truncate Float {expr}
 type( {name})			Number	type of variable {name}
+unread({fd}, {data})		none	unreads bytes back to a file descriptor
 values( {dict})			List	values in {dict}
 virtcol( {expr})		Number	screen column of cursor or mark
 visualmode( [expr])		String	last visual mode used
@@ -1920,6 +1932,7 @@ winrestcmd()			String	returns command to restore window sizes
 winrestview({dict})		None	restore view of current window
 winsaveview()			Dict	save view of current window
 winwidth( {nr})			Number	width of window {nr}
+write({fd}, {data})		none	writes bytes to a file descriptor
 writefile({list}, {fname} [, {binary}])
 				Number	write list of lines to file {fname}
 
@@ -4091,6 +4104,39 @@ nr2char({expr})						*nr2char()*
 		nr2char(10), because NULs are represented with newline
 		characters.  nr2char(0) is a real NUL and terminates the
 		string, thus results in an empty string.
+
+							*open3()*
+open3({command} [, {args} [, {options}]])
+		Spawns {command} with {args} command line arguments as
+		a child process and sets up pipes (or a pseudo-terminal
+		device) to communicate with it. ({command} is a |String|,
+		{args} is a |List|)
+		
+		The optional {options} argument is a |Dictionary|, and it can
+		contain the following keys:
+		  "stdin": it has the same effect as if |fdtune()| was called
+		  	   on {stdin} with the same arguments
+		  "stdout": it has the same effect as if |fdtune()| was called
+		  	   on {stdout} with the same arguments
+		  "stderr": it has the same effect as if |fdtune()| was called
+		  	   on {stderr} with the same arguments
+		  "pty": if true, uses a pseudo-terminal (pty) instead of pipes
+
+		The result is a |Dictionary| with these keys:
+			[{pid}, {stdin}, {stdout}, {stderr}]
+		{pid} is the pid of the child process.
+		{stdin} is the |filedescriptor| that is connected with
+		the standard input stream of the child process. It can
+		be used in |write()| to feed characters to the standard
+		input of the child.
+		{stdout} is the |filedescriptor| that is connected with
+		the standard output stream of the child process. It can
+		be used in |read()| or |readlines()| to read characters
+		from the standard output of the child.
+		{stderr} is the |filedescriptor| that is connected with
+		the standard error stream of the child process. It can
+		be used in |read()| or |readlines()| to read characters
+		from the standard error of the child.
 
 							*getpid()*
 getpid()	Return a Number which is the process ID of the Vim process.

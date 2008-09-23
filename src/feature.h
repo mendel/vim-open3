@@ -1197,9 +1197,9 @@
 /*
  * +open3		The support for pipe communication with child processes
  *			requires eval support.
- *			Currently it works only on Unix.
+ *			Currently it works only on Unix and Win32.
  */
-#if !defined(FEAT_EVAL) || !defined(UNIX)
+#if !defined(FEAT_EVAL) || (!defined(UNIX) && !defined(WIN32))
 # undef FEAT_OPEN3
 #endif
 
