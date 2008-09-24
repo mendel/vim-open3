@@ -2716,6 +2716,21 @@ extend({expr1}, {expr2} [, {expr3}])			*extend()*
 		{expr2} remains unchanged.
 		Returns {expr1}.
 
+fdtune({fd}, {options})					*fdtune()*
+		Tunes certain parameters of the |filedescriptor| denoted by
+		{fd}. {options} is a |Dictionary| and can contain the following
+		keys:
+		  "min_bytes": Trigger |Open3CanRead| or |Open3CanWrite|
+		 	autocommand if at least this many bytes are available
+			in the input buffer.
+		  "min_milliseconds": Trigger |Open3CanRead| or |Open3CanWrite|
+		  	autocommand if at least this many milliseconds elapsed
+			since the last autocommand trigger of the same kind for
+			the same |filedescriptor|.
+		  "max_milliseconds": Trigger |Open3CanRead| or |Open3CanWrite|
+		  	at most this many milliseconds after the first byte
+			arrived (ie. no byte will wait in the input buffer
+			longer than this interval)
 
 feedkeys({string} [, {mode}])				*feedkeys()*
 		Characters in {string} are queued for processing as if they
@@ -4112,31 +4127,36 @@ open3({command} [, {args} [, {options}]])
 		device) to communicate with it. ({command} is a |String|,
 		{args} is a |List|)
 		
-		The optional {options} argument is a |Dictionary|, and it can
-		contain the following keys:
-		  "stdin": it has the same effect as if |fdtune()| was called
-		  	   on {stdin} with the same arguments
+		{options} is a |Dictionary|, and it can contain the following
+		keys:
+		  "stdin":  it has the same effect as if |fdtune()| was called
+		  	    on the stdin file descriptor with the value as
+			    second argument, right after opening it
 		  "stdout": it has the same effect as if |fdtune()| was called
-		  	   on {stdout} with the same arguments
+		  	    on the stdout file descriptor with the value as
+			    second argument, right after opening it
 		  "stderr": it has the same effect as if |fdtune()| was called
-		  	   on {stderr} with the same arguments
-		  "pty": if true, uses a pseudo-terminal (pty) instead of pipes
+		  	    on the stderr file descriptor with the value as
+			    second argument, right after opening it
+		  "pty":    if true, uses a pseudo-terminal (pty) instead of
+		  	    pipes
 
 		The result is a |Dictionary| with these keys:
-			[{pid}, {stdin}, {stdout}, {stderr}]
-		{pid} is the pid of the child process.
-		{stdin} is the |filedescriptor| that is connected with
-		the standard input stream of the child process. It can
-		be used in |write()| to feed characters to the standard
-		input of the child.
-		{stdout} is the |filedescriptor| that is connected with
-		the standard output stream of the child process. It can
-		be used in |read()| or |readlines()| to read characters
-		from the standard output of the child.
-		{stderr} is the |filedescriptor| that is connected with
-		the standard error stream of the child process. It can
-		be used in |read()| or |readlines()| to read characters
-		from the standard error of the child.
+		  "pid":   the process id of the child process
+		  "stdin": the |filedescriptor| that is connected with
+			   the standard input stream of the child process.
+			   It can be used in |write()| to feed characters to
+			   the standard input of the child.
+		  "stdout": the |filedescriptor| that is connected with the
+		  	   standard output stream of the child process. It can
+			   be used in |read()| or |readlines()| to read
+			   characters/lines from the standard output of the
+			   child.
+		  "stderr": the |filedescriptor| that is connected with the
+		  	   standard error stream of the child process. It can
+			   be used in |read()| or |readlines()| to read
+			   characters/lines from the standard error of the
+			   child.
 
 							*getpid()*
 getpid()	Return a Number which is the process ID of the Vim process.
@@ -4386,6 +4406,22 @@ range({expr} [, {max} [, {stride}]])				*range()*
 			range(0)		" []
 			range(2, 0)		" error!
 <
+
+							*read()*
+read({fd} [, {minbytes} [, {maxbytes} [, {timeout}]]])
+		Reads bytes from the |filedescriptor| denoted by {fd}.
+		If {minbytes} is given and has a positive value, block
+		until {minbytes} bytes are available, or until {timeout}
+		expires, if {timeout} is given (in that case return an empty
+		string). If it is equal to zero, no lower limit on the number
+		of bytes returned. Note: It either returns a string that is at
+		least {minbytes} bytes long, or the empty string.
+		If {maxbytes} is given and has a positive value, do not
+		return more than {maxbytes} even if more bytes are available.
+		If it is equal to zero, no upper limit on the bytes returned.
+		If {timeout} is given, will not wait for input more than
+		{timeout} milliseconds.
+
 							*readfile()*
 readfile({fname} [, {binary} [, {max}]])
 		Read file {fname} and return a |List|, each line of the file
