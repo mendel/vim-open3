@@ -1668,7 +1668,7 @@ char2nr( {expr})		Number	ASCII value of first char in {expr}
 cindent( {lnum})		Number	C indent for line {lnum}
 clearmatches()			None	clear all matches
 cleanup_child({pid})		none	kills an cleans up a child process
-close({fd} [, {flush}])		none	closes a file descriptor
+close({fh} [, {flush}])		none	closes a file handle
 col( {expr})			Number	column nr of cursor or mark
 complete({startcol}, {matches})	String	set Insert mode completion
 complete_add( {expr})		Number	add completion match
@@ -1698,7 +1698,7 @@ exists( {expr})			Number	TRUE if {expr} exists
 extend({expr1}, {expr2} [, {expr3}])
 				List/Dict insert items of {expr2} into {expr1}
 expand( {expr})			String	expand special keywords in {expr}
-fdtune({fd}, {options})		none	tunes certain parameters of a file descriptor
+fhtune({fh}, {options})		none	tunes certain parameters of a file handle
 feedkeys( {string} [, {mode}])	Number	add key sequence to typeahead buffer
 filereadable( {file})		Number	TRUE if {file} is a readable file
 filewritable( {file})		Number	TRUE if {file} is a writable file
@@ -1710,7 +1710,7 @@ findfile( {name}[, {path}[, {count}]])
 				String	find file {name} in {path}
 float2nr( {expr})		Number	convert Float {expr} to a Number
 floor( {expr})			Float	round {expr} down
-flush( {fd} [, {timeout}])	Number	flushes write buffer of a file descriptor
+flush({fh} [, {timeout}])	Number	flushes write buffer of a file handle
 fnameescape( {fname})		String	escape special characters in {fname}
 fnamemodify( {fname}, {mods})	String	modify file name
 foldclosed( {lnum})		Number	first line of fold at {lnum} if closed
@@ -1824,10 +1824,10 @@ printf( {fmt}, {expr1}...)	String	format text
 pumvisible()			Number	whether popup menu is visible
 range( {expr} [, {max} [, {stride}]])
 				List	items from {expr} to {max}
-read({fd} [, {minbytes} [, {maxbytes} [, {timeout}]]])
-				String	reads bytes from a file descriptor
-readlines({fd} [, {minlines} [, {maxlines} [, {timeout}]]])
-				List	reads lines from a file descriptor
+read({fh} [, {minbytes} [, {maxbytes} [, {timeout}]]])
+				String	reads bytes from a file handle
+readlines({fh} [, {minlines} [, {maxlines} [, {timeout}]]])
+				List	reads lines from a file handle
 readfile({fname} [, {binary} [, {max}]])
 				List	get list of lines from file {fname}
 reltime( [{start} [, {end}]])	List	get time value
@@ -1919,7 +1919,7 @@ tr( {src}, {fromstr}, {tostr})	String	translate chars of {src} in {fromstr}
 					to chars in {tostr}
 trunc( {expr}			Float	truncate Float {expr}
 type( {name})			Number	type of variable {name}
-unread({fd}, {data})		none	unreads bytes back to a file descriptor
+unread({fh}, {data})		none	unreads bytes back to a file handle
 values( {dict})			List	values in {dict}
 virtcol( {expr})		Number	screen column of cursor or mark
 visualmode( [expr])		String	last visual mode used
@@ -1932,7 +1932,7 @@ winrestcmd()			String	returns command to restore window sizes
 winrestview({dict})		None	restore view of current window
 winsaveview()			Dict	save view of current window
 winwidth( {nr})			Number	width of window {nr}
-write({fd}, {data})		none	writes bytes to a file descriptor
+write({fh}, {data})		none	writes bytes to a file handle
 writefile({list}, {fname} [, {binary}])
 				Number	write list of lines to file {fname}
 
@@ -2199,6 +2199,36 @@ cindent({lnum})						*cindent()*
 clearmatches()						*clearmatches()*
 		Clears all matches previously defined by |matchadd()| and the
 		|:match| commands.
+
+							*cleanup_child()*
+cleanup_child({pid})
+		Kills an cleans up the child process identified by the {pid}
+		process id. Useful to simplify cleaning up when a child process
+		is no longer needed.
+
+		First flushes out all output pending in the write buffers
+		associated with the child process. Then it tries to terminate
+		the child process using a SIGTERM signal (or its equivalent),
+		and waits until the child terminates, or at most 5 seconds.
+		If the child still not terminates, sends a SIGKILL signal
+		(or its equivalent). Finally closes all |filehandle|s
+		associated with the child process.
+
+		Never throws an exception, so you can call it whatever state
+		your child process is in (does not matter if eg. you closed
+		some of the file descriptors or if the child process already
+		exited).
+
+							*close()*
+close({fh} [, {flush}])
+		Closes the {fh} |filehandle|. If {flush} is true, then calls a
+		|flush()| on it before closing it.
+		After the file handle is closed, no more I/O (|read()|,
+		|readline()|, |unread()|, |write()|, |flush()|) is possible
+		on it, and no more autocommands (|Open3CanRead|,
+		|Open3CanWrite|, |Open3ChildExited|) are triggered by it.
+		Attempting any I/O on {fh} after it is closed will trigger
+		an exception.
 
 							*col()*
 col({expr})	The result is a Number, which is the byte index of the column
@@ -2716,9 +2746,9 @@ extend({expr1}, {expr2} [, {expr3}])			*extend()*
 		{expr2} remains unchanged.
 		Returns {expr1}.
 
-fdtune({fd}, {options})					*fdtune()*
-		Tunes certain parameters of the |filedescriptor| denoted by
-		{fd}. {options} is a |Dictionary| and can contain the following
+fhtune({fh}, {options})					*fhtune()*
+		Tunes certain parameters of the |filehandle| denoted by
+		{fh}. {options} is a |Dictionary| and can contain the following
 		keys:
 		  "min_bytes": Trigger |Open3CanRead| or |Open3CanWrite|
 		 	autocommand if at least this many bytes are available
@@ -2726,7 +2756,7 @@ fdtune({fd}, {options})					*fdtune()*
 		  "min_milliseconds": Trigger |Open3CanRead| or |Open3CanWrite|
 		  	autocommand if at least this many milliseconds elapsed
 			since the last autocommand trigger of the same kind for
-			the same |filedescriptor|.
+			the same |filehandle|.
 		  "max_milliseconds": Trigger |Open3CanRead| or |Open3CanWrite|
 		  	at most this many milliseconds after the first byte
 			arrived (ie. no byte will wait in the input buffer
@@ -2853,6 +2883,12 @@ floor({expr})							*floor()*
 <			4.0
 		{only available when compiled with the |+float| feature}
 		
+							*flush()*
+flush({fh} [, {timeout}])
+		Flushes write buffer of the {fh} |filehandle|.
+		Blocks until all the data in the write buffer is written out,
+		but no more than {timeout} milliseconds.
+
 fnameescape({string})					*fnameescape()*
 		Escape {string} for use as file name command argument.	All
 		characters that have a special meaning, such as '%' and '|'
@@ -3675,6 +3711,16 @@ join({list} [, {sep}])					*join()*
 		converted into a string like with |string()|.
 		The opposite function is |split()|.
 
+							*kill()*
+kill({pid}, {signal})
+		Send a {signal} signal to the child process identified by
+		{pid} process id. {signal} can be a number or a string.
+		
+		May not work on other systems than Unix and derivatives.
+		For availability of this functionality and the meaning of
+		{pid} and {signal} see the documentation of the kill(1)
+		command (or its equivalent) in the manual of your OS.
+
 keys({dict})						*keys()*
 		Return a |List| with all the keys of {dict}.  The |List| is in
 		arbitrary order.
@@ -4129,30 +4175,30 @@ open3({command} [, {args} [, {options}]])
 		
 		{options} is a |Dictionary|, and it can contain the following
 		keys:
-		  "stdin":  it has the same effect as if |fdtune()| was called
-		  	    on the stdin file descriptor with the value as
+		  "stdin":  it has the same effect as if |fhtune()| was called
+		  	    on the stdin file handle with the value as
 			    second argument, right after opening it
-		  "stdout": it has the same effect as if |fdtune()| was called
-		  	    on the stdout file descriptor with the value as
+		  "stdout": it has the same effect as if |fhtune()| was called
+		  	    on the stdout file handle with the value as
 			    second argument, right after opening it
-		  "stderr": it has the same effect as if |fdtune()| was called
-		  	    on the stderr file descriptor with the value as
+		  "stderr": it has the same effect as if |fhtune()| was called
+		  	    on the stderr file handle with the value as
 			    second argument, right after opening it
 		  "pty":    if true, uses a pseudo-terminal (pty) instead of
 		  	    pipes
 
 		The result is a |Dictionary| with these keys:
 		  "pid":   the process id of the child process
-		  "stdin": the |filedescriptor| that is connected with
+		  "stdin": the |filehandle| that is connected with
 			   the standard input stream of the child process.
 			   It can be used in |write()| to feed characters to
 			   the standard input of the child.
-		  "stdout": the |filedescriptor| that is connected with the
+		  "stdout": the |filehandle| that is connected with the
 		  	   standard output stream of the child process. It can
 			   be used in |read()| or |readlines()| to read
 			   characters/lines from the standard output of the
 			   child.
-		  "stderr": the |filedescriptor| that is connected with the
+		  "stderr": the |filehandle| that is connected with the
 		  	   standard error stream of the child process. It can
 			   be used in |read()| or |readlines()| to read
 			   characters/lines from the standard error of the
@@ -4408,19 +4454,58 @@ range({expr} [, {max} [, {stride}]])				*range()*
 <
 
 							*read()*
-read({fd} [, {minbytes} [, {maxbytes} [, {timeout}]]])
-		Reads bytes from the |filedescriptor| denoted by {fd}.
+read({fh} [, {minbytes} [, {maxbytes} [, {timeout}]]])
+		Reads from the {fh} |filehandle| at least {minbytes} bytes,
+		at most {maxbytes} bytes, or zero bytes if less than
+		{minbytes} bytes are available in {timeout} milliseconds.
+		Returns the bytes as a string.
 		If {minbytes} is given and has a positive value, block
-		until {minbytes} bytes are available, or until {timeout}
-		expires, if {timeout} is given (in that case return an empty
-		string). If it is equal to zero, no lower limit on the number
-		of bytes returned. Note: It either returns a string that is at
-		least {minbytes} bytes long, or the empty string.
+		until at least {minbytes} bytes are available, but no longer
+		than {timeout} milliseconds (if {timeout} is given and
+		positive).
 		If {maxbytes} is given and has a positive value, do not
 		return more than {maxbytes} even if more bytes are available.
-		If it is equal to zero, no upper limit on the bytes returned.
-		If {timeout} is given, will not wait for input more than
+		Throws an FIXME exception on EOF condition.
+
+		Note: If {minbytes} has a positive value, is guaranteed that
+		the returned string will be either empty (in case of a
+		timeout) or at least {minbytes} bytes long. If {maxbytes} is
+		positive, it is guaranteed that the returned string will be
+		no longer than {maxbytes} bytes. If {timeout} is positive, it
+		is guaranteed that the call will not block for more than
 		{timeout} milliseconds.
+
+							*readlines()*
+readlines({fh} [, {minlines} [, {maxlines} [, {timeout}]]])
+		Reads at least {minlines}, at most {maxlines} from the {fh}
+		|filehandle|, or zero lines if less than {minlines} lines are
+		available in {timeout} milliseconds.
+		Returns the lines as a |List|.
+		If {minlines} is given and has a positive value, block
+		until at least {minlines} lines are available, but no longer
+		than {timeout} milliseconds (if {timeout} is given and
+		positive).
+		If {maxlines} is given and has a positive value, do not
+		return more than {maxlines} even if more lines are available.
+		Only whole (ie. terminated) lines are returned (except on EOF
+		condition, in that case the last line can be unterminated).
+		Throws an FIXME exception on EOF condition.
+
+		The input stream is broken at NL characters into lines. Macintosh
+		files separated with CR will result in a single long line (unless a
+		NL appears somewhere). CR characters that appear before a NL are
+		removed. Whether the last line ends in a NL or not does not matter.
+		All NUL characters are replaced with a NL character. (Note:
+		these are the same rules as for |readfile()| in non-binary
+		mode.)
+
+		Note: If {minlines} has a positive value, is guaranteed that
+		the returned list will be either empty (in case of a
+		timeout) or will contain at least {minlines} lines. If
+		{maxlines} is positive, it is guaranteed that the returned
+		list will contain no more than {maxlines} lines. If {timeout}
+		is positive, it is guaranteed that the call will not block for
+		more than {timeout} milliseconds.
 
 							*readfile()*
 readfile({fname} [, {binary} [, {max}]])
@@ -5628,6 +5713,20 @@ type({expr})	The result is a Number, depending on the type of {expr}:
 			:if type(myvar) == type([])
 			:if type(myvar) == type({})
 			:if type(myvar) == type(0.0)
+<
+
+							*unread()*
+unread({fh}, {data})
+		Puts back (unreads) {data} to the read buffer of the {fh}
+		|filehandle| to pretend that it was not read from it yet. Can
+		be used to undo the last |read()| or |readline()| call.
+		{data} can be either a string (contains the bytes to be
+		unread) or a |List| (contains the lines to be unread).
+		Note: It is guaranteed that |unread()| can put back as many
+		bytes to the input buffer as many bytes were returned by the
+		last call of |read()| or |readline()|, but no more. |unread()|
+		throws an error if you attempt to put back more bytes than
+		that.
 
 values({dict})						*values()*
 		Return a |List| with all the values of {dict}.	The |List| is
@@ -5780,6 +5879,16 @@ winwidth({nr})						*winwidth()*
   :  exe "normal 50\<C-W>|"
   :endif
 <
+
+							*write()*
+write({fh}, {data})
+		Writes {data} to the {fh} |filehandle|.
+		Never blocks, and no partial writes happen (ie. either all
+		of {data} is transferred to the write buffer or an exception
+		is thrown)
+		{data} can be either a string (contains the bytes to be
+		written) or a |List| (contains the lines to be written).
+
 							*writefile()*
 writefile({list}, {fname} [, {binary}])
 		Write |List| {list} to file {fname}.  Each list item is
