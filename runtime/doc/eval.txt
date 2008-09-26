@@ -2756,16 +2756,20 @@ fhtune({fh}, {options})					*fhtune()*
 		 	autocommand if at least this many bytes are available
 			in the input buffer. If set to zero, then no
 			autocommand is triggered by this event.
+			The default is 1 for stdout and stderr, and 0 for
+			stdin.
 		  "min_milliseconds": Trigger |Open3CanRead| or |Open3CanWrite|
 		  	autocommand if at least this many milliseconds elapsed
 			since the last autocommand trigger of the same kind for
 			the same |filehandle|. If set to zero, no lower limit
 			on the interval between consecutive autocommand triggers.
+			The default is 500.
 		  "max_milliseconds": Trigger |Open3CanRead| or |Open3CanWrite|
 		  	at most this many milliseconds after the first byte
 			arrived that is still in the input buffer (ie. no byte
 			will wait in the input buffer longer than this interval).
 			If set to zero, no autocommand is triggered by this event.
+			The default is 500.
 
 feedkeys({string} [, {mode}])				*feedkeys()*
 		Characters in {string} are queued for processing as if they
@@ -4180,17 +4184,29 @@ open3({command} [, {args} [, {options}]])
 		
 		{options} is a |Dictionary|, and it can contain the following
 		keys:
-		  "stdin":  it has the same effect as if |fhtune()| was called
+		  "stdin":  It has the same effect as if |fhtune()| was called
 		  	    on the stdin file handle with the value as
-			    second argument, right after opening it
-		  "stdout": it has the same effect as if |fhtune()| was called
+			    second argument, right after opening it.
+			    The defaults:
+			    - "min_bytes": 0
+			    - "min_milliseconds": 0
+			    - "max_milliseconds": 500
+		  "stdout": It has the same effect as if |fhtune()| was called
 		  	    on the stdout file handle with the value as
-			    second argument, right after opening it
-		  "stderr": it has the same effect as if |fhtune()| was called
+			    second argument, right after opening it.
+			    The defaults:
+			    - "min_bytes": 1
+			    - "min_milliseconds": 500
+			    - "max_milliseconds": 500
+		  "stderr": It has the same effect as if |fhtune()| was called
 		  	    on the stderr file handle with the value as
-			    second argument, right after opening it
-		  "pty":    if true, uses a pseudo-terminal (pty) instead of
-		  	    pipes
+			    second argument, right after opening it.
+			    The defaults:
+			    - "min_bytes": 1
+			    - "min_milliseconds": 500
+			    - "max_milliseconds": 500
+		  "pty":    If true, uses a pseudo-terminal (pty) instead of
+		  	    pipes.
 
 		The result is a |Dictionary| with these keys:
 		  "pid":   the process id of the child process

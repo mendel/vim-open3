@@ -281,6 +281,10 @@ Name			triggered by ~
 |SourcePre|		before sourcing a Vim script
 |SourceCmd|		before sourcing a Vim script |Cmd-event|
 
+|Open3ChildExited|	a child process exited
+|Open3CanRead|		input is possible from a child process
+|Open3CanWrite|		output is possible to a child process
+
 |VimResized|		after the Vim window size changed
 |FocusGained|		Vim got input focus
 |FocusLost|		Vim lost input focus
@@ -668,6 +672,28 @@ MenuPopup			Just before showing the popup menu (under the
 					o	Operator-pending
 					i	Insert
 					c	Command line
+							*Open3ChildExited*
+Open3ChildExited		A child process (created by |open3()| or
+				|open2()|) exited.
+				The pattern is matched against the process id
+				of the child process and <afile> is set to
+				that process id.
+							*Open3CanRead*
+Open3CanRead			Input is possible from a child process 
+				(created by |open3()| or |open2()|).
+				The pattern is matched against the
+				|filehandle| which is ready for reading,
+				and <afile> is set to that |filehandle|.
+							*Open3CanWrite*
+Open3CanWrite			Output is possible to a child process
+				(created by |open3()| or |open2()|).
+				You must explicitly set the autocommand event
+				triggering parameters (see |fhtune()|,
+				|open3()|, |open2()|) to enable this kind of
+				event.
+				The pattern is matched against the
+				|filehandle| which is ready for writing,
+				and <afile> is set to that |filehandle|.
 							*QuickFixCmdPre*
 QuickFixCmdPre			Before a quickfix command is run (|:make|,
 				|:lmake|, |:grep|, |:lgrep|, |:grepadd|,
