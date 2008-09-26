@@ -1817,6 +1817,8 @@ nextnonblank( {lnum})		Number	line nr of non-blank line >= {lnum}
 nr2char( {expr})		String	single char with ASCII value {expr}
 open3({command} [, {args} [, {options}]])
 				Dict	spawns child process and returns pipes to it
+open2({command} [, {args} [, {options}]])
+				Dict	spawns child process and returns pipes to it
 pathshorten( {expr})		String	shorten directory names in a path
 pow( {x}, {y})			Float	{x} to the power of {y}
 prevnonblank( {lnum})		Number	line nr of non-blank line <= {lnum}
@@ -2752,15 +2754,18 @@ fhtune({fh}, {options})					*fhtune()*
 		keys:
 		  "min_bytes": Trigger |Open3CanRead| or |Open3CanWrite|
 		 	autocommand if at least this many bytes are available
-			in the input buffer.
+			in the input buffer. If set to zero, then no
+			autocommand is triggered by this event.
 		  "min_milliseconds": Trigger |Open3CanRead| or |Open3CanWrite|
 		  	autocommand if at least this many milliseconds elapsed
 			since the last autocommand trigger of the same kind for
-			the same |filehandle|.
+			the same |filehandle|. If set to zero, no lower limit
+			on the interval between consecutive autocommand triggers.
 		  "max_milliseconds": Trigger |Open3CanRead| or |Open3CanWrite|
 		  	at most this many milliseconds after the first byte
-			arrived (ie. no byte will wait in the input buffer
-			longer than this interval)
+			arrived that is still in the input buffer (ie. no byte
+			will wait in the input buffer longer than this interval).
+			If set to zero, no autocommand is triggered by this event.
 
 feedkeys({string} [, {mode}])				*feedkeys()*
 		Characters in {string} are queued for processing as if they
@@ -4204,6 +4209,13 @@ open3({command} [, {args} [, {options}]])
 			   characters/lines from the standard error of the
 			   child.
 
+							*open2()*
+open2({command} [, {args} [, {options}]])
+		Similar to |open3()| but does not set up pipe to read the child
+		process' standard error stream, but instead leave it connected
+		to Vim's standard error. Everything described in |open3()| applies
+		to it, except that 
+
 							*getpid()*
 getpid()	Return a Number which is the process ID of the Vim process.
 		On Unix and MS-Windows this is a unique number, until Vim
@@ -4462,9 +4474,16 @@ read({fh} [, {minbytes} [, {maxbytes} [, {timeout}]]])
 		If {minbytes} is given and has a positive value, block
 		until at least {minbytes} bytes are available, but no longer
 		than {timeout} milliseconds (if {timeout} is given and
-		positive).
+		positive). If {minbytes} is missing or zero, no lower limit on
+		the number of bytes returned.
 		If {maxbytes} is given and has a positive value, do not
-		return more than {maxbytes} even if more bytes are available.
+		return more than {maxbytes} even if more bytes are available. If
+		{maxbytes} is missing or is zero, then no upper limit on
+		the number of bytes returned.
+		If {timeout} is given and has a positive value, may block at
+		most {timeout} milliseconds. If {timeout} is not given or is
+		zero, then does not block.
+
 		Throws an FIXME exception on EOF condition.
 
 		Note: If {minbytes} has a positive value, is guaranteed that
@@ -4473,7 +4492,8 @@ read({fh} [, {minbytes} [, {maxbytes} [, {timeout}]]])
 		positive, it is guaranteed that the returned string will be
 		no longer than {maxbytes} bytes. If {timeout} is positive, it
 		is guaranteed that the call will not block for more than
-		{timeout} milliseconds.
+		{timeout} milliseconds (or will not block at all if {timeout}
+		is not given).
 
 							*readlines()*
 readlines({fh} [, {minlines} [, {maxlines} [, {timeout}]]])
@@ -4484,11 +4504,18 @@ readlines({fh} [, {minlines} [, {maxlines} [, {timeout}]]])
 		If {minlines} is given and has a positive value, block
 		until at least {minlines} lines are available, but no longer
 		than {timeout} milliseconds (if {timeout} is given and
-		positive).
+		positive). If {minlines} is missing or zero, no lower limit on
+		the number of lines returned.
 		If {maxlines} is given and has a positive value, do not
 		return more than {maxlines} even if more lines are available.
 		Only whole (ie. terminated) lines are returned (except on EOF
-		condition, in that case the last line can be unterminated).
+		condition, in that case the last line can be unterminated). If
+		{maxlines} is missing or is zero, then no upper limit on
+		the number of lines returned.
+		If {timeout} is given and has a positive value, may block at
+		most {timeout} milliseconds. If {timeout} is not given or is
+		zero, then does not block.
+
 		Throws an FIXME exception on EOF condition.
 
 		The input stream is broken at NL characters into lines. Macintosh
@@ -5722,11 +5749,14 @@ unread({fh}, {data})
 		be used to undo the last |read()| or |readline()| call.
 		{data} can be either a string (contains the bytes to be
 		unread) or a |List| (contains the lines to be unread).
+		Restores the value of the arrived-at timestamp used to track
+		how long the bytes are waiting in the read buffer (see
+		"max_milliseconds" in |fhtune()|).
+
 		Note: It is guaranteed that |unread()| can put back as many
 		bytes to the input buffer as many bytes were returned by the
-		last call of |read()| or |readline()|, but no more. |unread()|
-		throws an error if you attempt to put back more bytes than
-		that.
+		last call of |read()| or |readline()|, but no more. Throws an
+		error if you attempt to put back more bytes than that.
 
 values({dict})						*values()*
 		Return a |List| with all the values of {dict}.	The |List| is
