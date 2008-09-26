@@ -417,6 +417,10 @@ CClink = $(CC)
 # Uncomment this when you do not want the netbeans interface.
 #CONF_OPT_NETBEANS = --disable-netbeans
 
+# OPEN3 - Support for pipe communication with child process.
+# Uncomment this when you do not want the open3 interface.
+#CONF_OPT_OPEN3 = --disable-open3
+
 # SNIFF - Include support for SNiFF+.
 #CONF_OPT_SNIFF = --enable-sniff
 
@@ -1420,7 +1424,7 @@ TAGS_SRC = *.c *.cpp if_perl.xs
 
 EXTRA_SRC = hangulin.c if_mzsch.c auto/if_perl.c if_perlsfio.c \
 	    if_python.c if_tcl.c if_ruby.c if_sniff.c gui_beval.c \
-	    workshop.c wsdebug.c integration.c netbeans.c
+	    workshop.c wsdebug.c integration.c netbeans.c open3.c
 
 # All sources, also the ones that are not configured
 ALL_SRC = $(BASIC_SRC) $(ALL_GUI_SRC) $(EXTRA_SRC)
@@ -1545,6 +1549,7 @@ PRO_AUTO = \
 	gui_beval.pro \
 	workshop.pro \
 	netbeans.pro \
+	open3.pro \
 	$(ALL_GUI_PRO) \
 	$(TCL_PRO)
 
@@ -1580,7 +1585,7 @@ config auto/config.mk: auto/configure config.mk.in config.h.in
 		$(CONF_OPT_SNIFF) $(CONF_OPT_FEAT) $(CONF_TERM_LIB) \
 		$(CONF_OPT_COMPBY) $(CONF_OPT_ACL)  $(CONF_OPT_NETBEANS) \
 		$(CONF_ARGS) $(CONF_OPT_MZSCHEME) $(CONF_OPT_PLTHOME) \
-		$(CONF_OPT_SYSMOUSE)
+		$(CONF_OPT_SYSMOUSE) $(CONF_OPT_OPEN3)
 
 # Use "make reconfig" to rerun configure without cached values.
 # When config.h changes, most things will be recompiled automatically.
@@ -2557,6 +2562,9 @@ objects/wsdebug.o: wsdebug.c
 
 objects/netbeans.o: netbeans.c
 	$(CCC) -o $@ netbeans.c
+
+objects/open3.o: open3.c
+	$(CCC) -o $@ open3.c
 
 Makefile:
 	@echo The name of the makefile MUST be "Makefile" (with capital M)!!!!
