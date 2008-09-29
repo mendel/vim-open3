@@ -1433,7 +1433,7 @@ ALL_SRC = $(BASIC_SRC) $(ALL_GUI_SRC) $(EXTRA_SRC)
 # checks more, but may not work well for checking a GUI that wasn't configured.
 # The perl sources also don't work well with lint.
 LINT_SRC = $(BASIC_SRC) $(GUI_SRC) $(HANGULIN_SRC) $(PYTHON_SRC) $(TCL_SRC) \
-	$(SNIFF_SRC) $(WORKSHOP_SRC) $(WSDEBUG_SRC) $(NETBEANS_SRC)
+	$(SNIFF_SRC) $(WORKSHOP_SRC) $(WSDEBUG_SRC) $(NETBEANS_SRC) $(OPEN3_SRC)
 #LINT_SRC = $(SRC)
 #LINT_SRC = $(ALL_SRC)
 
@@ -1494,7 +1494,8 @@ OBJ = \
 	$(OS_EXTRA_OBJ) \
 	$(WORKSHOP_OBJ) \
 	$(NETBEANS_OBJ) \
-	$(WSDEBUG_OBJ)
+	$(WSDEBUG_OBJ) \
+	$(OPEN3_OBJ)
 
 PRO_AUTO = \
 	buffer.pro \
@@ -1549,7 +1550,7 @@ PRO_AUTO = \
 	gui_beval.pro \
 	workshop.pro \
 	netbeans.pro \
-	open3.pro \
+	if_open3.pro \
 	$(ALL_GUI_PRO) \
 	$(TCL_PRO)
 
