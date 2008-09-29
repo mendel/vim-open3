@@ -4205,6 +4205,8 @@ open3({command} [, {args} [, {options}]])
 			    - "min_bytes": 1
 			    - "min_milliseconds": 500
 			    - "max_milliseconds": 500
+		  "env":    A |Dictionary|, sets the corresponding environment
+		  	    variables before spawning the child process.
 		  "pty":    If true, uses a pseudo-terminal (pty) instead of
 		  	    pipes.
 
