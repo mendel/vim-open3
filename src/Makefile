@@ -1424,7 +1424,7 @@ TAGS_SRC = *.c *.cpp if_perl.xs
 
 EXTRA_SRC = hangulin.c if_mzsch.c auto/if_perl.c if_perlsfio.c \
 	    if_python.c if_tcl.c if_ruby.c if_sniff.c gui_beval.c \
-	    workshop.c wsdebug.c integration.c netbeans.c open3.c
+	    workshop.c wsdebug.c integration.c netbeans.c if_open3.c
 
 # All sources, also the ones that are not configured
 ALL_SRC = $(BASIC_SRC) $(ALL_GUI_SRC) $(EXTRA_SRC)
@@ -2563,8 +2563,8 @@ objects/wsdebug.o: wsdebug.c
 objects/netbeans.o: netbeans.c
 	$(CCC) -o $@ netbeans.c
 
-objects/open3.o: open3.c
-	$(CCC) -o $@ open3.c
+objects/if_open3.o: if_open3.c
+	$(CCC) -o $@ if_open3.c
 
 Makefile:
 	@echo The name of the makefile MUST be "Makefile" (with capital M)!!!!
