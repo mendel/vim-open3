@@ -18,9 +18,9 @@
  * See ":help open3" for explanation.
  */
 
-#include "if_open3.h"
-
 #include "vim.h"
+
+#include "if_open3.h"
 
 /* TODO: review how portable these includes are */
 #include <stdio.h>
@@ -37,9 +37,12 @@
 # include "vimio.h"
 #endif
 
-
-
-struct open3_filehandle open3_filehandles[MAX_FILEHANDLES];
+void		open3_perform_io __ARGS((int));
+static int	open3_spawn_child __ARGS((const char *,
+		    size_t, const char **, size_t, const char **, int));
+static void	wait_child __ARGS((int));
+static int	find_free_proc_handle __ARGS(());
+static void	free_proc_handle __ARGS((int));
 
 
 /*
@@ -56,7 +59,7 @@ open3_perform_io(fd)
     //FIXME implement this
 }
 
-open3_eval_read(fh, )
+//open3_eval_read(fh, )
 
 
 //FIXME set up SIGCHLD handler
@@ -67,6 +70,8 @@ open3_eval_read(fh, )
 
 /*
  * Creates the pipes and starts the child process.
+ *
+ * Returns the process handle.
  */
     static int
 open3_spawn_child(cmd, args_len, args, env_len, env, use_pty)
@@ -77,8 +82,8 @@ open3_spawn_child(cmd, args_len, args, env_len, env, use_pty)
     const char **env;
     int use_pty;
 {
-    int fh_idx;
-    open3_filehandle_T *fh;
+    int proc_idx;
+    open3_proc_T *proc;
 #ifdef UNIX
     int stdin_pipe[2] = {-1, -1};
     int stdout_pipe[2] = {-1, -1};
@@ -104,66 +109,66 @@ open3_spawn_child(cmd, args_len, args, env_len, env, use_pty)
 # endif
 #endif	/* !UNIX */
 
-    /* Find a free filehandle slot. */
-    fh_idx = find_free_filehandle();
-    if (fh_idx < 0)
+    /* Find a free process handle slot. */
+    proc_idx = find_free_proc_handle();
+    if (proc_idx < 0)
     {
-	(void)EMSG(_("EXXX: Ran out of free filehandles"));
+	(void)EMSG(_("EXXX: Ran out of free child process slots"));
 	goto error;
     }
-    fh = &open3_fh[fh_idx];
+    proc = &open3_proc[proc_idx];
 
     /* Fill in the file handle struct. */
     {
 	int i;
 
-	fh->cmd = strdup(cmd);
+	proc->cmd = strdup(cmd);
 
 	/* Expand environment variables in the command line. */
-	if (!(fh->real_cmd = (char *)alloc(MAXPATHL + 1)))
+	if (!(proc->real_cmd = (char *)alloc(MAXPATHL + 1)))
 	{
 	    goto error;
 	}
-	expand_env((char_u *)fh->real_cmd, (char_u *)fh->cmd, MAXPATHL);
-	if (fh->cmd == fh->real_cmd)
+	expand_env((char_u *)proc->real_cmd, (char_u *)proc->cmd, MAXPATHL);
+	if (proc->cmd == proc->real_cmd)
 	{
 	    goto error;
 	}
 
 	/* Copy arguments, but prepend command name and append a NULL. */
-	if (!(fh->args = (char **)alloc((args_len + 2) * sizeof(char *))))
+	if (!(proc->args = (char **)alloc((args_len + 2) * sizeof(char *))))
 	{
 	    goto error;
 	}
-	vim_memset(fh->args, 0, (args_len + 2) * sizeof(char *));
-	fh->args[0] = strdup(fh->cmd);
+	vim_memset(proc->args, 0, (args_len + 2) * sizeof(char *));
+	proc->args[0] = strdup(proc->cmd);
 	for (i = 1; i <= args_len; ++i)
 	{
-	    if (!(fh->args[i] = strdup(args[i])))
+	    if (!(proc->args[i] = strdup(args[i])))
 	    {
 		goto error;
 	    }
 	}
-	fh->args[args_len + 1] = NULL;
+	proc->args[args_len + 1] = NULL;
 
 	/* Copy envvars, but append a NULL. */
-	if (!(fh->env = (char **)alloc((env_len + 1) * sizeof(char *))))
+	if (!(proc->env = (char **)alloc((env_len + 1) * sizeof(char *))))
 	{
 	    goto error;
 	}
-	vim_memset(fh->args, 0, (args_len + 1) * sizeof(char *));
+	vim_memset(proc->args, 0, (args_len + 1) * sizeof(char *));
 	for (i = 0; i < env_len; ++i)
 	{
-	    if (!(fh->env[i] = strdup(env[i])))
+	    if (!(proc->env[i] = strdup(env[i])))
 	    {
 		goto error;
 	    }
 	}
-	fh->env[env_len] = NULL;
+	proc->env[env_len] = NULL;
     }
 
     //FIXME (void) prefixes to function calls
-    //FIXME exit path on errors (deallocate memory, set fh->pid to 0)
+    //FIXME exit path on errors (deallocate memory, set proc->pid to 0)
 
     //FIXME implement pty stuff
 
@@ -193,7 +198,7 @@ open3_spawn_child(cmd, args_len, args, env_len, env, use_pty)
 
 #if defined(UNIX)
     /* Create the child process. */
-    switch (fh->pid = fork())
+    switch (proc->pid = fork())
     {
     case -1:				/* error */
 	PERROR(_("EXXX: Could not fork child process"));
@@ -221,7 +226,7 @@ open3_spawn_child(cmd, args_len, args, env_len, env, use_pty)
 	(void)close(stderr_pipe[0]);
 
 	/* Run the command. */
-	if (execve(fh->real_cmd, fh->args, fh->env) == -1)
+	if (execve(proc->real_cmd, proc->args, proc->env) == -1)
 	{
 	    PERROR(_("EXXX: Could not execute command"));
 	}
@@ -230,9 +235,9 @@ child_error:
 	/* NOTREACHED */
     default:				/* parent */
 	 /* Save the file descriptors. */
-	fh->to_stdin = stdin_pipe[1];
-	fh->from_stdout = stdout_pipe[0];
-	fh->from_stderr = stderr_pipe[0];
+	proc->to_stdin.fd = stdin_pipe[1];
+	proc->from_stdout.fd = stdout_pipe[0];
+	proc->from_stderr.fd = stderr_pipe[0];
 
 	/* Close unused ends of the pipes. */
 	(void)close(stdin_pipe[0]);
@@ -259,24 +264,24 @@ child_error:
 	PERROR(_("EXXX: Could not execute child process"));
 	goto error;
     }
-    fh->pid = pi.dwProcessId;
-    fh->hProc = pi.hProcess;
+    proc->pid = pi.dwProcessId;
+    proc->hProc = pi.hProcess;
     CloseHandle(pi.hThread);
 
     /* TODO - tidy up after failure to create files on pipe handles. */
-    if (((fh->to_stdin = _open_osfhandle((OPEN_OH_ARGTYPE)stdin_wr,
+    if (((proc->to_stdin.fd = _open_osfhandle((OPEN_OH_ARGTYPE)stdin_wr,
 						      _O_TEXT|_O_APPEND)) < 0))
     {
 	PERROR(_("EXXX: Could not open pipes to child process"));
 	goto error;
     }
-    if (((fh->from_stdout = _open_osfhandle((OPEN_OH_ARGTYPE)stdout_rd,
+    if (((proc->from_stdout.fd = _open_osfhandle((OPEN_OH_ARGTYPE)stdout_rd,
 						      _O_TEXT|_O_RDONLY)) < 0))
     {
 	PERROR(_("EXXX: Could not open pipes to child process"));
 	goto error;
     }
-    if (((fh->from_stderr = _open_osfhandle((OPEN_OH_ARGTYPE)stderr_rd,
+    if (((proc->from_stderr.fd = _open_osfhandle((OPEN_OH_ARGTYPE)stderr_rd,
 						      _O_TEXT|_O_RDONLY)) < 0))
     {
 	PERROR(_("EXXX: Could not open pipes to child process"));
@@ -290,7 +295,7 @@ child_error:
 #endif /* !UNIX */
 
 end:
-    return fh_idx;
+    return proc_idx;
 
 error:
     /* First close pipes */
@@ -332,8 +337,8 @@ error:
     }
 #endif	/* !UNIX */
 
-    /* Then free the filehandle data and mark the slot free. */
-    free_filehandle(fh_idx);
+    /* Then free the process handle data and mark the slot free. */
+    free_proc_handle(proc_idx);
 
     return -1;
 } /* open3_spawn_child */
@@ -342,137 +347,137 @@ error:
  * 
  * 
  */
-    static void
-wait_child(idx)
-    int idx;
-{
-    /*
-     * Trying to exit normally (not sure whether it is fit to UNIX cscope
-     */
-    if (csinfo[i].to_fp != NULL)
-    {
-	(void)fputs("q\n", csinfo[i].to_fp);
-	(void)fflush(csinfo[i].to_fp);
-    }
-#if defined(UNIX)
-    {
-	int waitpid_errno;
-	int pstat;
-	pid_t pid;
-
-# if defined(HAVE_SIGACTION)
-	struct sigaction sa, old;
-
-	/* Use sigaction() to limit the waiting time to two seconds. */
-	sigemptyset(&sa.sa_mask);
-	sa.sa_handler = sig_handler;
-	sa.sa_flags = SA_NODEFER;
-	sigaction(SIGALRM, &sa, &old);
-	alarm(2); /* 2 sec timeout */
-
-	/* Block until cscope exits or until timer expires */
-	pid = waitpid(csinfo[i].pid, &pstat, 0);
-	waitpid_errno = errno;
-
-	/* cancel pending alarm if still there and restore signal */
-	alarm(0);
-	sigaction(SIGALRM, &old, NULL);
-# else
-	int waited;
-
-	/* Can't use sigaction(), loop for two seconds.  First yield the CPU
-	 * to give cscope a chance to exit quickly. */
-	sleep(0);
-	for (waited = 0; waited < 40; ++waited)
-	{
-	    pid = waitpid(csinfo[i].pid, &pstat, WNOHANG);
-	    waitpid_errno = errno;
-	    if (pid != 0)
-		break;  /* break unless the process is still running */
-	    mch_delay(50L, FALSE); /* sleep 50 ms */
-	}
-# endif
-	/*
-	 * If the cscope process is still running: kill it.
-	 * Safety check: If the PID would be zero here, the entire X session
-	 * would be killed.  -1 and 1 are dangerous as well.
-	 */
-	if (pid < 0 && csinfo[i].pid > 1)
-	{
-# ifdef ECHILD
-	    int alive = TRUE;
-
-	    if (waitpid_errno == ECHILD)
-	    {
-		/*
-		 * When using 'vim -g', vim is forked and cscope process is
-		 * no longer a child process but a sibling.  So waitpid()
-		 * fails with errno being ECHILD (No child processes).
-		 * Don't send SIGKILL to cscope immediately but wait
-		 * (polling) for it to exit normally as result of sending
-		 * the "q" command, hence giving it a chance to clean up
-		 * its temporary files.
-		 */
-		int waited;
-
-		sleep(0);
-		for (waited = 0; waited < 40; ++waited)
-		{
-		    /* Check whether cscope process is still alive */
-		    if (kill(csinfo[i].pid, 0) != 0)
-		    {
-			alive = FALSE; /* cscope process no longer exists */
-			break;
-		    }
-		    mch_delay(50L, FALSE); /* sleep 50ms */
-		}
-	    }
-	    if (alive)
-# endif
-	    {
-		kill(csinfo[i].pid, SIGKILL);
-		(void)waitpid(csinfo[i].pid, &pstat, 0);
-	    }
-	}
-    }
-#else  /* !UNIX */
-    if (csinfo[i].hProc != NULL)
-    {
-	/* Give cscope a chance to exit normally */
-	if (WaitForSingleObject(csinfo[i].hProc, 1000) == WAIT_TIMEOUT)
-	    TerminateProcess(csinfo[i].hProc, 0);
-	CloseHandle(csinfo[i].hProc);
-    }
-#endif
-
-    if (csinfo[i].fr_fp != NULL)
-	(void)fclose(csinfo[i].fr_fp);
-    if (csinfo[i].to_fp != NULL)
-	(void)fclose(csinfo[i].to_fp);
-
-    if (freefnpp)
-    {
-	vim_free(csinfo[i].fname);
-	vim_free(csinfo[i].ppath);
-	vim_free(csinfo[i].flags);
-    }
-
-    clear_csinfo(i);
-} /* wait_child */
+//    static void
+//wait_child(idx)
+//    int idx;
+//{
+//    /*
+//     * Trying to exit normally (not sure whether it is fit to UNIX cscope
+//     */
+//    if (csinfo[i].to_fp != NULL)
+//    {
+//	(void)fputs("q\n", csinfo[i].to_fp);
+//	(void)fflush(csinfo[i].to_fp);
+//    }
+//#if defined(UNIX)
+//    {
+//	int waitpid_errno;
+//	int pstat;
+//	pid_t pid;
+//
+//# if defined(HAVE_SIGACTION)
+//	struct sigaction sa, old;
+//
+//	/* Use sigaction() to limit the waiting time to two seconds. */
+//	sigemptyset(&sa.sa_mask);
+//	sa.sa_handler = sig_handler;
+//	sa.sa_flags = SA_NODEFER;
+//	sigaction(SIGALRM, &sa, &old);
+//	alarm(2); /* 2 sec timeout */
+//
+//	/* Block until cscope exits or until timer expires */
+//	pid = waitpid(csinfo[i].pid, &pstat, 0);
+//	waitpid_errno = errno;
+//
+//	/* cancel pending alarm if still there and restore signal */
+//	alarm(0);
+//	sigaction(SIGALRM, &old, NULL);
+//# else
+//	int waited;
+//
+//	/* Can't use sigaction(), loop for two seconds.  First yield the CPU
+//	 * to give cscope a chance to exit quickly. */
+//	sleep(0);
+//	for (waited = 0; waited < 40; ++waited)
+//	{
+//	    pid = waitpid(csinfo[i].pid, &pstat, WNOHANG);
+//	    waitpid_errno = errno;
+//	    if (pid != 0)
+//		break;  /* break unless the process is still running */
+//	    mch_delay(50L, FALSE); /* sleep 50 ms */
+//	}
+//# endif
+//	/*
+//	 * If the cscope process is still running: kill it.
+//	 * Safety check: If the PID would be zero here, the entire X session
+//	 * would be killed.  -1 and 1 are dangerous as well.
+//	 */
+//	if (pid < 0 && csinfo[i].pid > 1)
+//	{
+//# ifdef ECHILD
+//	    int alive = TRUE;
+//
+//	    if (waitpid_errno == ECHILD)
+//	    {
+//		/*
+//		 * When using 'vim -g', vim is forked and cscope process is
+//		 * no longer a child process but a sibling.  So waitpid()
+//		 * fails with errno being ECHILD (No child processes).
+//		 * Don't send SIGKILL to cscope immediately but wait
+//		 * (polling) for it to exit normally as result of sending
+//		 * the "q" command, hence giving it a chance to clean up
+//		 * its temporary files.
+//		 */
+//		int waited;
+//
+//		sleep(0);
+//		for (waited = 0; waited < 40; ++waited)
+//		{
+//		    /* Check whether cscope process is still alive */
+//		    if (kill(csinfo[i].pid, 0) != 0)
+//		    {
+//			alive = FALSE; /* cscope process no longer exists */
+//			break;
+//		    }
+//		    mch_delay(50L, FALSE); /* sleep 50ms */
+//		}
+//	    }
+//	    if (alive)
+//# endif
+//	    {
+//		kill(csinfo[i].pid, SIGKILL);
+//		(void)waitpid(csinfo[i].pid, &pstat, 0);
+//	    }
+//	}
+//    }
+//#else  /* !UNIX */
+//    if (csinfo[i].hProc != NULL)
+//    {
+//	/* Give cscope a chance to exit normally */
+//	if (WaitForSingleObject(csinfo[i].hProc, 1000) == WAIT_TIMEOUT)
+//	    TerminateProcess(csinfo[i].hProc, 0);
+//	CloseHandle(csinfo[i].hProc);
+//    }
+//#endif
+//
+//    if (csinfo[i].fr_fp != NULL)
+//	(void)fclose(csinfo[i].fr_fp);
+//    if (csinfo[i].to_fp != NULL)
+//	(void)fclose(csinfo[i].to_fp);
+//
+//    if (freefnpp)
+//    {
+//	vim_free(csinfo[i].fname);
+//	vim_free(csinfo[i].ppath);
+//	vim_free(csinfo[i].flags);
+//    }
+//
+//    clear_csinfo(i);
+//} /* wait_child */
 
 /*
- * Finds the next unused slot in open3_fh.
+ * Finds the next unused process slot in open3_proc.
  *
  * Returns the index of the first free slot.
  */
     static int
-find_free_filehandle()
+find_free_proc_handle()
 {
     int i;
 
-    for (i = 0; i < MAX_FILEHANDLES; ++i)
+    for (i = 0; i < MAX_CHILD_PROCESSES; ++i)
     {
-	if (!open3_fh[i].pid)
+	if (!open3_proc[i].pid)
 	{
 	    return i;
 	}
@@ -482,48 +487,48 @@ find_free_filehandle()
 }
 
 /*
- * Frees and zeroes all fields of the filehandle.
+ * Frees and zeroes all fields of the process slot.
  */
     static void
-free_filehandle(idx)
+free_proc_handle(idx)
     int idx;
 {
     int i;
-    open3_filehandle_T *fh;
+    open3_proc_T *proc;
 
-    fh = &open3_fh[idx];
+    proc = &open3_proc[idx];
 
-    if (!fh->pid)
+    if (!proc->pid)
     {
 	return;	    /* already freed */
     }
 
-    fh->pid = 0;
+    proc->pid = 0;
 
-    vim_free(fh->cmd);
-    vim_free(fh->real_cmd);
+    vim_free(proc->cmd);
+    vim_free(proc->real_cmd);
 
-    for (i = 0; i < fh->args_len; ++i)
+    for (i = 0; i < proc->args_len; ++i)
     {
-	if (fh->args[i])
+	if (proc->args[i])
 	{
-	    vim_free(fh->args[i]);
-	    fh->args[i] = NULL;
+	    vim_free(proc->args[i]);
+	    proc->args[i] = NULL;
 	}
     }
-    fh->args_len = 0;
+    proc->args_len = 0;
 
-    for (i = 0; i < fh->env_len; ++i)
+    for (i = 0; i < proc->env_len; ++i)
     {
-	if (fh->env[i])
+	if (proc->env[i])
 	{
-	    vim_free(fh->env[i]);
-	    fh->env[i] = NULL;
+	    vim_free(proc->env[i]);
+	    proc->env[i] = NULL;
 	}
     }
-    fh->env_len = 0;
+    proc->env_len = 0;
 
-    fh->use_pty = 0;
+    proc->use_pty = 0;
 
     //FIXME free file descriptors and iobufs
 }

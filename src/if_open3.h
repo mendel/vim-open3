@@ -18,6 +18,8 @@
 #ifndef __if_open3_h__
 #define __if_open3_h__
 
+#include "auto/config.h"
+
 /* TODO: review how portable these includes are */
 #include <stdio.h>
 #include <unistd.h>
@@ -76,6 +78,7 @@ typedef struct {
     open3_filehandle_T from_stderr;
 } open3_proc_T;
 
+extern open3_proc_T open3_proc[MAX_CHILD_PROCESSES];
 extern open3_filehandle_T open3_fh[MAX_FILEHANDLES];
 
 
