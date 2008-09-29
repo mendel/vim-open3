@@ -43,7 +43,7 @@ struct open3_filehandle open3_filehandles[MAX_FILEHANDLES];
 
 
 /*
- * open3_perform_io -- Called when the I/O is possible on fd.
+ * Called when the I/O is possible on fd.
  *
  * This function is called from the I/O reactor (select()/poll()
  * on console, or the corresponding event loop of the GUI) when
@@ -59,11 +59,15 @@ open3_perform_io(fd)
 open3_eval_read(fh, )
 
 
+//FIXME set up SIGCHLD handler
 
 
 
 
 
+/*
+ * Creates the pipes and starts the child process.
+ */
     static int
 open3_spawn_child(cmd, args_len, args, env_len, env, use_pty)
     const char *cmd;
@@ -126,23 +130,28 @@ open3_spawn_child(cmd, args_len, args, env_len, env, use_pty)
 	    goto error;
 	}
 
-	if (!(fh->args = (char **)alloc((args_len + 1) * sizeof(char *))))
+	/* Copy arguments, but prepend command name and append a NULL. */
+	if (!(fh->args = (char **)alloc((args_len + 2) * sizeof(char *))))
 	{
 	    goto error;
 	}
-	for (i = 0; i < args_len; ++i)
+	vim_memset(fh->args, 0, (args_len + 2) * sizeof(char *));
+	fh->args[0] = strdup(fh->cmd);
+	for (i = 1; i <= args_len; ++i)
 	{
 	    if (!(fh->args[i] = strdup(args[i])))
 	    {
 		goto error;
 	    }
 	}
-	fh->args[args_len] = NULL;
+	fh->args[args_len + 1] = NULL;
 
+	/* Copy envvars, but append a NULL. */
 	if (!(fh->env = (char **)alloc((env_len + 1) * sizeof(char *))))
 	{
 	    goto error;
 	}
+	vim_memset(fh->args, 0, (args_len + 1) * sizeof(char *));
 	for (i = 0; i < env_len; ++i)
 	{
 	    if (!(fh->env[i] = strdup(env[i])))
@@ -153,19 +162,17 @@ open3_spawn_child(cmd, args_len, args, env_len, env, use_pty)
 	fh->env[env_len] = NULL;
     }
 
-    //FIXME PERROR() vs. EMSG()
     //FIXME (void) prefixes to function calls
     //FIXME exit path on errors (deallocate memory, set fh->pid to 0)
 
     //FIXME implement pty stuff
 
-    /* Create the pipes. */
 #if defined(UNIX)
+    /* Create the pipes. */
     if ((pipe(stdin_pipe) < 0) || (pipe(stdout_pipe) < 0)
         || (pipe(stderr_pipe) < 0))
     {
-	PERROR(_("open3_spawn_child: pipe failed"));
-	(void)EMSG(_("EXXX: Could not create pipes"));
+	PERROR(_("EXXX: Could not create pipes"));
 	goto error;
     }
 #else
@@ -174,41 +181,37 @@ open3_spawn_child(cmd, args_len, args, env_len, env, use_pty)
     sa.bInheritHandle = TRUE;
     sa.lpSecurityDescriptor = NULL;
 
+    /* Create the pipes. */
     if (!(pipe_stdin = CreatePipe(&stdin_rd, &stdin_wr, &sa, 0))
 	|| !(pipe_stdout = CreatePipe(&stdout_rd, &stdout_wr, &sa, 0))
 	|| !(pipe_stderr = CreatePipe(&stderr_rd, &stderr_wr, &sa, 0)))
     {
-	PERROR(_("open3_spawn_child: pipe failed"));
-	(void)EMSG(_("EXXX: Could not create pipes"));
+	PERROR(_("EXXX: Could not create pipes"));
 	goto error;
     }
 #endif	/* !UNIX */
 
-    /* Create the child process. */
 #if defined(UNIX)
+    /* Create the child process. */
     switch (fh->pid = fork())
     {
     case -1:				/* error */
-	PERROR(_("open3_spawn_child: fork failed"));
-	(void)EMSG(_("EXXX: Could not fork for child process"));
+	PERROR(_("EXXX: Could not fork child process"));
 	goto error;
     case 0:				/* child */
 	if (dup2(stdin_pipe[0], STDIN_FILENO) == -1)
 	{
-	    PERROR(_("open3_spawn_child: dup2 failed"));
-	    (void)EMSG(_("EXXX: Could not redirect stdin"));
+	    PERROR(_("EXXX: Could not duplicate file descriptor"));
 	    goto child_error;
 	}
 	if (dup2(stdin_pipe[1], STDOUT_FILENO) == -1)
 	{
-	    PERROR(_("open3_spawn_child: dup2 failed"));
-	    (void)EMSG(_("EXXX: Could not redirect stdout"));
+	    PERROR(_("EXXX: Could not duplicate file descriptor"));
 	    goto child_error;
 	}
 	if (dup2(stdin_pipe[1], STDERR_FILENO) == -1)
 	{
-	    PERROR(_("open3_spawn_child: dup2 failed"));
-	    (void)EMSG(_("EXXX: Could not redirect stderr"));
+	    PERROR(_("EXXX: Could not duplicate file descriptor"));
 	    goto child_error;
 	}
 
@@ -218,10 +221,9 @@ open3_spawn_child(cmd, args_len, args, env_len, env, use_pty)
 	(void)close(stderr_pipe[0]);
 
 	/* Run the command. */
-	if (execl(fh->real_cmd, fh->args, NULL) == -1)
+	if (execve(fh->real_cmd, fh->args, fh->env) == -1)
 	{
-	    PERROR(_("open3_spawn_child: execl failed"));
-	    (void)EMSG(_("EXXX: Could not execute command"));
+	    PERROR(_("EXXX: Could not execute command"));
 	}
 child_error:
 	exit(127);
@@ -248,38 +250,36 @@ child_error:
     si.hStdInput  = stdin_rd;
     si.hStdOutput = stdout_wr;
     si.hStdError  = stderr_wr;
+
+    /* Create the child process. */
     created = CreateProcess(NULL, cmd, NULL, NULL, TRUE, CREATE_NEW_CONSOLE,
 							NULL, NULL, &si, &pi);
     if (!created)
     {
-	PERROR(_("open3_spawn_child: exec failed"));
-	(void)EMSG(_("EXXX: Could not spawn child process"));
+	PERROR(_("EXXX: Could not execute child process"));
 	goto error;
     }
-    csinfo[i].pid = pi.dwProcessId;
-    csinfo[i].hProc = pi.hProcess;
+    fh->pid = pi.dwProcessId;
+    fh->hProc = pi.hProcess;
     CloseHandle(pi.hThread);
 
     /* TODO - tidy up after failure to create files on pipe handles. */
     if (((fh->to_stdin = _open_osfhandle((OPEN_OH_ARGTYPE)stdin_wr,
 						      _O_TEXT|_O_APPEND)) < 0))
     {
-	PERROR(_("open3_spawn_child: _open_osfhandle for child stdin failed"));
-	(void)EMSG(_("EXXX: Could not open pipes to child process"));
+	PERROR(_("EXXX: Could not open pipes to child process"));
 	goto error;
     }
     if (((fh->from_stdout = _open_osfhandle((OPEN_OH_ARGTYPE)stdout_rd,
 						      _O_TEXT|_O_RDONLY)) < 0))
     {
-	PERROR(_("open3_spawn_child: _open_osfhandle for child stdout failed"));
-	(void)EMSG(_("EXXX: Could not open pipes to child process"));
+	PERROR(_("EXXX: Could not open pipes to child process"));
 	goto error;
     }
     if (((fh->from_stderr = _open_osfhandle((OPEN_OH_ARGTYPE)stderr_rd,
 						      _O_TEXT|_O_RDONLY)) < 0))
     {
-	PERROR(_("open3_spawn_child: _open_osfhandle for child stderr failed"));
-	(void)EMSG(_("EXXX: Could not open pipes to child process"));
+	PERROR(_("EXXX: Could not open pipes to child process"));
 	goto error;
     }
 
@@ -332,22 +332,19 @@ error:
     }
 #endif	/* !UNIX */
 
-    /* Then mark the filehandle slot as free. */
+    /* Then free the filehandle data and mark the slot free. */
     free_filehandle(fh_idx);
 
     return -1;
 } /* open3_spawn_child */
 
 /*
- * PRIVATE: cs_release_csp
- *
- * Does the actual free'ing for the cs ptr with an optional flag of whether
- * or not to free the filename.  Called by cs_kill and cs_reset.
+ * 
+ * 
  */
     static void
-cs_release_csp(i, freefnpp)
-    int i;
-    int freefnpp;
+wait_child(idx)
+    int idx;
 {
     /*
      * Trying to exit normally (not sure whether it is fit to UNIX cscope
@@ -461,10 +458,10 @@ cs_release_csp(i, freefnpp)
     }
 
     clear_csinfo(i);
-} /* cs_release_csp */
+} /* wait_child */
 
 /*
- * find_free_filehandle -- Finds the next unused slot in open3_fh.
+ * Finds the next unused slot in open3_fh.
  *
  * Returns the index of the first free slot.
  */
@@ -485,7 +482,7 @@ find_free_filehandle()
 }
 
 /*
- * free_filehandle -- Clears all fields of filehandle (and mark it as free).
+ * Frees and zeroes all fields of the filehandle.
  */
     static void
 free_filehandle(idx)

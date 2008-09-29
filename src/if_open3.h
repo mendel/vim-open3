@@ -45,9 +45,13 @@
 #define MAX_FILEHANDLES		(3 * MAX_CHILD_PROCESSES)
 
 
-//FIXME move to open3.h
 typedef struct {
 } open3_iobuffer_T;
+
+typedef struct {
+    int fd;
+    open3_iobuffer_T buf;
+} open3_filehandle_T;
 
 typedef struct {
     char *cmd;	    /* given by the user */
@@ -57,6 +61,7 @@ typedef struct {
     size_t env_len;
     char **env;
     int use_pty;
+
 #if defined(UNIX)
     pid_t           pid;	/* process id, 0 if unused */
 #else
@@ -65,10 +70,11 @@ typedef struct {
     HANDLE          hProc;
 # endif
 #endif
-    struct iobuffer stdin_buf;
-    struct iobuffer stdout_buf;
-    struct iobuffer stderr_buf;
-} open3_filehandle_T;
+
+    open3_filehandle_T to_stdin;
+    open3_filehandle_T from_stdout;
+    open3_filehandle_T from_stderr;
+} open3_proc_T;
 
 extern open3_filehandle_T open3_fh[MAX_FILEHANDLES];
 
