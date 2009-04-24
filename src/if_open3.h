@@ -56,14 +56,6 @@ typedef struct {
 } open3_filehandle_T;
 
 typedef struct {
-    char *cmd;	    /* given by the user */
-    char *real_cmd; /* expanded using $PATH, etc. */
-    size_t args_len;
-    char **args;
-    size_t env_len;
-    char **env;
-    int use_pty;
-
 #if defined(UNIX)
     pid_t           pid;	/* process id, 0 if unused */
 #else
@@ -72,7 +64,13 @@ typedef struct {
     HANDLE          hProc;
 # endif
 #endif
-
+    char *cmd;	    /* given by the user */
+    char *real_cmd; /* expanded using $PATH, etc. */
+    size_t args_len;
+    char **args;
+    size_t env_len;
+    char **env;
+    int use_pty;
     open3_filehandle_T to_stdin;
     open3_filehandle_T from_stdout;
     open3_filehandle_T from_stderr;
@@ -81,5 +79,8 @@ typedef struct {
 extern open3_proc_T open3_proc[MAX_CHILD_PROCESSES];
 extern open3_filehandle_T open3_fh[MAX_FILEHANDLES];
 
+void		open3_perform_io __ARGS((int));
+int		open3_spawn_child __ARGS((const char *,
+		    size_t, const char **, size_t, const char **, int));
 
 #endif /* __if_open3_h__ */

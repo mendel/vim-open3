@@ -37,9 +37,6 @@
 # include "vimio.h"
 #endif
 
-void		open3_perform_io __ARGS((int));
-static int	open3_spawn_child __ARGS((const char *,
-		    size_t, const char **, size_t, const char **, int));
 static void	wait_child __ARGS((int));
 static int	find_free_proc_handle __ARGS(());
 static void	free_proc_handle __ARGS((int));
