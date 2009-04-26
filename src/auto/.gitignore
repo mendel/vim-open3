@@ -1,0 +1,8 @@
+/config.log
+/config.cache
+/config.status
+/link.sed
+/link.log
+/osdef.h
+/pathdef.c
+/if_perl.c
