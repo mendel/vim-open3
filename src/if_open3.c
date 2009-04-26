@@ -40,10 +40,15 @@
 static void	wait_child __ARGS((int));
 static int	find_free_proc_handle __ARGS(());
 static void	free_proc_handle __ARGS((int));
+static int	spawn_child __ARGS((open3_proc_T *));
+static open3_proc_T*	init_proc_handle __ARGS((
+    int, const char*, size_t, const char**, size_t, const char**, int));
 
+
+open3_proc_T open3_proc[MAX_CHILD_PROCESSES];
 
 /*
- * Called when the I/O is possible on fd.
+ * Called when I/O is possible on fd.
  *
  * This function is called from the I/O reactor (select()/poll()
  * on console, or the corresponding event loop of the GUI) when
@@ -63,14 +68,12 @@ open3_perform_io(fd)
 
 
 
-
-
 /*
  * Creates the pipes and starts the child process.
  *
  * Returns the process handle.
  */
-    static int
+    int
 open3_spawn_child(cmd, args_len, args, env_len, env, use_pty)
     const char *cmd;
     size_t args_len;
@@ -81,30 +84,6 @@ open3_spawn_child(cmd, args_len, args, env_len, env, use_pty)
 {
     int proc_idx;
     open3_proc_T *proc;
-#ifdef UNIX
-    int stdin_pipe[2] = {-1, -1};
-    int stdout_pipe[2] = {-1, -1};
-    int stderr_pipe[2] = {-1, -1};
-#else
-    /* WIN32 */
-    int		fd;
-    SECURITY_ATTRIBUTES sa;
-    PROCESS_INFORMATION pi;
-    STARTUPINFO si;
-    BOOL	pipe_stdin = FALSE, pipe_stdout = FALSE, pipe_stderr = FALSE;
-    HANDLE	stdin_rd, stdout_rd, stderr_rd;
-    HANDLE	stdin_wr, stdout_wr, stderr_wr;
-    BOOL	created;
-# ifdef __BORLANDC__
-#  define OPEN_OH_ARGTYPE long
-# else
-#  if (_MSC_VER >= 1300)
-#   define OPEN_OH_ARGTYPE intptr_t
-#  else
-#   define OPEN_OH_ARGTYPE long
-#  endif
-# endif
-#endif	/* !UNIX */
 
     /* Find a free process handle slot. */
     proc_idx = find_free_proc_handle();
@@ -113,63 +92,48 @@ open3_spawn_child(cmd, args_len, args, env_len, env, use_pty)
 	(void)EMSG(_("EXXX: Ran out of free child process slots"));
 	goto error;
     }
-    proc = &open3_proc[proc_idx];
 
     /* Fill in the file handle struct. */
+    proc = init_proc_handle(proc_idx, cmd, args_len, args, env_len, env, use_pty);
+    if (!proc)
     {
-	int i;
-
-	proc->cmd = strdup(cmd);
-
-	/* Expand environment variables in the command line. */
-	if (!(proc->real_cmd = (char *)alloc(MAXPATHL + 1)))
-	{
-	    goto error;
-	}
-	expand_env((char_u *)proc->real_cmd, (char_u *)proc->cmd, MAXPATHL);
-	if (proc->cmd == proc->real_cmd)
-	{
-	    goto error;
-	}
-
-	/* Copy arguments, but prepend command name and append a NULL. */
-	if (!(proc->args = (char **)alloc((args_len + 2) * sizeof(char *))))
-	{
-	    goto error;
-	}
-	vim_memset(proc->args, 0, (args_len + 2) * sizeof(char *));
-	proc->args[0] = strdup(proc->cmd);
-	for (i = 1; i <= args_len; ++i)
-	{
-	    if (!(proc->args[i] = strdup(args[i])))
-	    {
-		goto error;
-	    }
-	}
-	proc->args[args_len + 1] = NULL;
-
-	/* Copy envvars, but append a NULL. */
-	if (!(proc->env = (char **)alloc((env_len + 1) * sizeof(char *))))
-	{
-	    goto error;
-	}
-	vim_memset(proc->args, 0, (args_len + 1) * sizeof(char *));
-	for (i = 0; i < env_len; ++i)
-	{
-	    if (!(proc->env[i] = strdup(env[i])))
-	    {
-		goto error;
-	    }
-	}
-	proc->env[env_len] = NULL;
+	goto error;
     }
 
-    //FIXME (void) prefixes to function calls
-    //FIXME exit path on errors (deallocate memory, set proc->pid to 0)
+    /* Create the child process with pipes attached to it. */
+    if (!spawn_child(proc))
+    {
+	goto error;
+    }
+
+end:
+    return proc_idx;
+
+error:
+    /* Free the process handle data and mark the slot free. */
+    free_proc_handle(proc_idx);
+
+    return -1;
+} /* open3_spawn_child */
+
+
+#ifdef UNIX
+
+/*
+ * Creates the pipes and starts the child process. (UNIX implementation)
+ *
+ * Returns: true on success, false on error.
+ */
+    static int
+spawn_child(proc)
+    open3_proc_T *proc;
+{
+    int stdin_pipe[2] = {-1, -1};
+    int stdout_pipe[2] = {-1, -1};
+    int stderr_pipe[2] = {-1, -1};
 
     //FIXME implement pty stuff
 
-#if defined(UNIX)
     /* Create the pipes. */
     if ((pipe(stdin_pipe) < 0) || (pipe(stdout_pipe) < 0)
         || (pipe(stderr_pipe) < 0))
@@ -177,23 +141,7 @@ open3_spawn_child(cmd, args_len, args, env_len, env, use_pty)
 	PERROR(_("EXXX: Could not create pipes"));
 	goto error;
     }
-#else
-    /* WIN32 */
-    sa.nLength = sizeof(SECURITY_ATTRIBUTES);
-    sa.bInheritHandle = TRUE;
-    sa.lpSecurityDescriptor = NULL;
 
-    /* Create the pipes. */
-    if (!(pipe_stdin = CreatePipe(&stdin_rd, &stdin_wr, &sa, 0))
-	|| !(pipe_stdout = CreatePipe(&stdout_rd, &stdout_wr, &sa, 0))
-	|| !(pipe_stderr = CreatePipe(&stderr_rd, &stderr_wr, &sa, 0)))
-    {
-	PERROR(_("EXXX: Could not create pipes"));
-	goto error;
-    }
-#endif	/* !UNIX */
-
-#if defined(UNIX)
     /* Create the child process. */
     switch (proc->pid = fork())
     {
@@ -231,7 +179,7 @@ child_error:
 	exit(127);
 	/* NOTREACHED */
     default:				/* parent */
-	 /* Save the file descriptors. */
+	/* Save the file descriptors. */
 	proc->to_stdin.fd = stdin_pipe[1];
 	proc->from_stdout.fd = stdout_pipe[0];
 	proc->from_stderr.fd = stderr_pipe[0];
@@ -244,8 +192,80 @@ child_error:
 	(void)close(stderr_pipe[1]);
 	stderr_pipe[1] = -1;
     }
-#else
-    /* WIN32 */
+
+end:
+    return 1;
+
+error:
+    /* Close pipes */
+    if (stdin_pipe[0] >= 0) {
+	(void)close(stdin_pipe[0]);
+    }
+    if (stdin_pipe[1] >= 0) {
+	(void)close(stdin_pipe[1]);
+    }
+    if (stdout_pipe[0] >= 0) {
+	(void)close(stdout_pipe[0]);
+    }
+    if (stdout_pipe[1] >= 0) {
+	(void)close(stdout_pipe[1]);
+    }
+    if (stderr_pipe[0] >= 0) {
+	(void)close(stderr_pipe[0]);
+    }
+    if (stderr_pipe[1] >= 0) {
+	(void)close(stderr_pipe[1]);
+    }
+
+    return 0;
+} /* spawn_child */
+
+
+#else /* UNIX */
+
+
+/*
+ * Creates the pipes and starts the child process. (WIN32 implementation)
+ *
+ * Returns: true on success, false on error.
+ */
+    static int
+spawn_child(proc)
+    open3_proc_T *proc;
+{
+    int		fd;
+    SECURITY_ATTRIBUTES sa;
+    PROCESS_INFORMATION pi;
+    STARTUPINFO si;
+    BOOL	pipe_stdin = FALSE, pipe_stdout = FALSE, pipe_stderr = FALSE;
+    HANDLE	stdin_rd, stdout_rd, stderr_rd;
+    HANDLE	stdin_wr, stdout_wr, stderr_wr;
+    BOOL	created;
+# ifdef __BORLANDC__
+#  define OPEN_OH_ARGTYPE long
+# else
+#  if (_MSC_VER >= 1300)
+#   define OPEN_OH_ARGTYPE intptr_t
+#  else
+#   define OPEN_OH_ARGTYPE long
+#  endif
+# endif
+
+    //FIXME implement pty stuff
+
+    sa.nLength = sizeof(SECURITY_ATTRIBUTES);
+    sa.bInheritHandle = TRUE;
+    sa.lpSecurityDescriptor = NULL;
+
+    /* Create the pipes. */
+    if (!(pipe_stdin = CreatePipe(&stdin_rd, &stdin_wr, &sa, 0))
+	|| !(pipe_stdout = CreatePipe(&stdout_rd, &stdout_wr, &sa, 0))
+	|| !(pipe_stderr = CreatePipe(&stderr_rd, &stderr_wr, &sa, 0)))
+    {
+	PERROR(_("EXXX: Could not create pipes"));
+	goto error;
+    }
+
     GetStartupInfo(&si);
     si.dwFlags = STARTF_USESTDHANDLES | STARTF_USESHOWWINDOW;
     si.wShowWindow = SW_HIDE;  /* Hide child application window */
@@ -289,34 +309,12 @@ child_error:
     CloseHandle(stdin_rd);
     CloseHandle(stdout_wr);
     CloseHandle(stderr_wr);
-#endif /* !UNIX */
 
 end:
-    return proc_idx;
+    return 1;
 
 error:
-    /* First close pipes */
-#if defined(UNIX)
-    if (stdin_pipe[0] >= 0) {
-	(void)close(stdin_pipe[0]);
-    }
-    if (stdin_pipe[1] >= 0) {
-	(void)close(stdin_pipe[1]);
-    }
-    if (stdout_pipe[0] >= 0) {
-	(void)close(stdout_pipe[0]);
-    }
-    if (stdout_pipe[1] >= 0) {
-	(void)close(stdout_pipe[1]);
-    }
-    if (stderr_pipe[0] >= 0) {
-	(void)close(stderr_pipe[0]);
-    }
-    if (stderr_pipe[1] >= 0) {
-	(void)close(stderr_pipe[1]);
-    }
-#else
-/* WIN32 */
+    /* Close the handles */
     if (pipe_stdin)
     {
 	CloseHandle(stdin_rd);
@@ -332,13 +330,94 @@ error:
 	CloseHandle(stderr_rd);
 	CloseHandle(stderr_wr);
     }
-#endif	/* !UNIX */
 
-    /* Then free the process handle data and mark the slot free. */
+    return 0;
+} /* spawn_child */
+
+#endif /* UNIX */
+
+
+/*
+ * Initializes the open3_proc_T structure.
+ *
+ * Returns: the pointer to the open3_proc_T struct on success, NULL on error.
+ */
+    //FIXME (void) prefixes to function calls
+    static open3_proc_T*
+init_proc_handle(proc_idx, cmd, args_len, args, env_len, env, use_pty)
+    int proc_idx;
+    const char *cmd;
+    size_t args_len;
+    const char **args;
+    size_t env_len;
+    const char **env;
+    int use_pty;
+{
+    open3_proc_T *proc = &open3_proc[proc_idx];
+
+    vim_memset(proc, 0, sizeof(*proc));
+
+    proc->cmd = strdup(cmd);
+
+    /* Expand environment variables in the command line. */
+    if (!(proc->real_cmd = (char *)alloc(MAXPATHL + 1)))
+    {
+	goto error;
+    }
+    expand_env((char_u *)proc->real_cmd, (char_u *)proc->cmd, MAXPATHL);
+    if (proc->cmd == proc->real_cmd)
+    {
+	goto error;
+    }
+
+    /* Copy arguments, and prepend command name and append a NULL. */
+    if (!(proc->args = (char **)alloc((args_len + 2) * sizeof(char *))))
+    {
+	goto error;
+    }
+    vim_memset(proc->args, 0, (args_len + 2) * sizeof(char *));
+    proc->args[0] = strdup(proc->cmd);
+    {
+	int i;
+
+	for (i = 1; i <= args_len; ++i)
+	{
+	    if (!(proc->args[i] = strdup(args[i])))
+	    {
+		goto error;
+	    }
+	}
+    }
+    proc->args[args_len + 1] = NULL;
+
+    /* Copy envvars, and append a NULL. */
+    if (!(proc->env = (char **)alloc((env_len + 1) * sizeof(char *))))
+    {
+	goto error;
+    }
+    vim_memset(proc->env, 0, (env_len + 1) * sizeof(char *));
+    {
+	int i;
+
+	for (i = 0; i < env_len; ++i)
+	{
+	    if (!(proc->env[i] = strdup(env[i])))
+	    {
+		goto error;
+	    }
+	}
+    }
+    proc->env[env_len] = NULL;
+
+end:
+    return proc;
+
+error:
     free_proc_handle(proc_idx);
 
-    return -1;
-} /* open3_spawn_child */
+    return NULL;
+} /* init_proc_handle */
+
 
 /*
  * 
@@ -437,7 +516,7 @@ error:
 //	    }
 //	}
 //    }
-//#else  /* !UNIX */
+//#else  /* UNIX */
 //    if (csinfo[i].hProc != NULL)
 //    {
 //	/* Give cscope a chance to exit normally */
