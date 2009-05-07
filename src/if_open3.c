@@ -37,12 +37,12 @@
 # include "vimio.h"
 #endif
 
-static void	wait_child __ARGS((int));
-static int	find_free_proc_handle __ARGS(());
-static void	free_proc_handle __ARGS((int));
 static int	spawn_child __ARGS((open3_proc_T *));
 static open3_proc_T*	init_proc_handle __ARGS((
     int, const char*, size_t, const char**, size_t, const char**, int));
+static void	wait_child __ARGS((int));
+static int	find_free_proc_handle __ARGS(());
+static void	free_proc_handle __ARGS((int));
 
 
 open3_proc_T open3_proc[MAX_CHILD_PROCESSES];
@@ -63,8 +63,6 @@ open3_perform_io(fd)
 
 //open3_eval_read(fh, )
 
-
-//FIXME set up SIGCHLD handler
 
 
 
@@ -131,6 +129,9 @@ spawn_child(proc)
     int stdin_pipe[2] = {-1, -1};
     int stdout_pipe[2] = {-1, -1};
     int stderr_pipe[2] = {-1, -1};
+
+    /* Set up the SIGCHLD handler. */
+    install_sigchld_handler(void)
 
     //FIXME implement pty stuff
 
@@ -420,126 +421,186 @@ error:
 
 
 /*
- * 
- * 
+ * Kills and waits for the child process.
  */
-//    static void
-//wait_child(idx)
-//    int idx;
-//{
-//    /*
-//     * Trying to exit normally (not sure whether it is fit to UNIX cscope
-//     */
-//    if (csinfo[i].to_fp != NULL)
-//    {
-//	(void)fputs("q\n", csinfo[i].to_fp);
-//	(void)fflush(csinfo[i].to_fp);
-//    }
-//#if defined(UNIX)
-//    {
-//	int waitpid_errno;
-//	int pstat;
-//	pid_t pid;
-//
-//# if defined(HAVE_SIGACTION)
-//	struct sigaction sa, old;
-//
-//	/* Use sigaction() to limit the waiting time to two seconds. */
-//	sigemptyset(&sa.sa_mask);
-//	sa.sa_handler = sig_handler;
-//	sa.sa_flags = SA_NODEFER;
-//	sigaction(SIGALRM, &sa, &old);
-//	alarm(2); /* 2 sec timeout */
-//
-//	/* Block until cscope exits or until timer expires */
-//	pid = waitpid(csinfo[i].pid, &pstat, 0);
-//	waitpid_errno = errno;
-//
-//	/* cancel pending alarm if still there and restore signal */
-//	alarm(0);
-//	sigaction(SIGALRM, &old, NULL);
-//# else
-//	int waited;
-//
-//	/* Can't use sigaction(), loop for two seconds.  First yield the CPU
-//	 * to give cscope a chance to exit quickly. */
-//	sleep(0);
-//	for (waited = 0; waited < 40; ++waited)
-//	{
-//	    pid = waitpid(csinfo[i].pid, &pstat, WNOHANG);
-//	    waitpid_errno = errno;
-//	    if (pid != 0)
-//		break;  /* break unless the process is still running */
-//	    mch_delay(50L, FALSE); /* sleep 50 ms */
-//	}
-//# endif
-//	/*
-//	 * If the cscope process is still running: kill it.
-//	 * Safety check: If the PID would be zero here, the entire X session
-//	 * would be killed.  -1 and 1 are dangerous as well.
-//	 */
-//	if (pid < 0 && csinfo[i].pid > 1)
-//	{
-//# ifdef ECHILD
-//	    int alive = TRUE;
-//
-//	    if (waitpid_errno == ECHILD)
-//	    {
-//		/*
-//		 * When using 'vim -g', vim is forked and cscope process is
-//		 * no longer a child process but a sibling.  So waitpid()
-//		 * fails with errno being ECHILD (No child processes).
-//		 * Don't send SIGKILL to cscope immediately but wait
-//		 * (polling) for it to exit normally as result of sending
-//		 * the "q" command, hence giving it a chance to clean up
-//		 * its temporary files.
-//		 */
-//		int waited;
-//
-//		sleep(0);
-//		for (waited = 0; waited < 40; ++waited)
-//		{
-//		    /* Check whether cscope process is still alive */
-//		    if (kill(csinfo[i].pid, 0) != 0)
-//		    {
-//			alive = FALSE; /* cscope process no longer exists */
-//			break;
-//		    }
-//		    mch_delay(50L, FALSE); /* sleep 50ms */
-//		}
-//	    }
-//	    if (alive)
-//# endif
-//	    {
-//		kill(csinfo[i].pid, SIGKILL);
-//		(void)waitpid(csinfo[i].pid, &pstat, 0);
-//	    }
-//	}
-//    }
-//#else  /* UNIX */
-//    if (csinfo[i].hProc != NULL)
-//    {
-//	/* Give cscope a chance to exit normally */
-//	if (WaitForSingleObject(csinfo[i].hProc, 1000) == WAIT_TIMEOUT)
-//	    TerminateProcess(csinfo[i].hProc, 0);
-//	CloseHandle(csinfo[i].hProc);
-//    }
-//#endif
-//
-//    if (csinfo[i].fr_fp != NULL)
-//	(void)fclose(csinfo[i].fr_fp);
-//    if (csinfo[i].to_fp != NULL)
-//	(void)fclose(csinfo[i].to_fp);
-//
-//    if (freefnpp)
-//    {
-//	vim_free(csinfo[i].fname);
-//	vim_free(csinfo[i].ppath);
-//	vim_free(csinfo[i].flags);
-//    }
-//
-//    clear_csinfo(i);
-//} /* wait_child */
+    static void
+wait_child(idx)
+    int idx;
+{
+    proc = &open3_proc[idx];
+
+    if (!proc->pid)
+    {
+	return;	    /* already reaped */
+    }
+
+#if defined(UNIX)
+    /* First ask it politely to terminate. */
+    kill(proc->pid, SIGTERM);
+
+    {
+	int waitpid_errno;
+	int pstat;
+	pid_t pid;
+
+# if defined(HAVE_SIGACTION)
+	struct sigaction sa, old;
+
+	/* Use sigaction() to limit the waiting time to two seconds. */
+	sigemptyset(&sa.sa_mask);
+	sa.sa_handler = &sigalarm_handler;
+	sa.sa_flags = SA_NODEFER;
+	sigaction(SIGALRM, &sa, &old);
+	alarm(2); /* 2 sec timeout */
+
+	/* Block until the child process exits or until timer expires */
+	pid = waitpid(proc->pid, &pstat, 0);
+	waitpid_errno = errno;
+
+	/* cancel pending alarm if still there and restore signal */
+	alarm(0);
+	sigaction(SIGALRM, &old, NULL);
+# else
+	int waited;
+
+	/* Can't use sigaction(), loop for two seconds.  First yield the CPU
+	 * to give the child process a chance to exit quickly. */
+	sleep(0);
+	for (waited = 0; waited < 40; ++waited)
+	{
+	    pid = waitpid(proc->pid, &pstat, WNOHANG);
+	    waitpid_errno = errno;
+	    if (pid != 0)
+		break;  /* break unless the process is still running */
+	    mch_delay(50L, FALSE); /* sleep 50 ms */
+	}
+# endif
+	/*
+	 * If the child process is still running: kill it.
+	 * Safety check: If the PID would be zero here, the entire X session
+	 * would be killed.  -1 and 1 are dangerous as well.
+	 */
+	if (pid < 0 && csinfo[i].pid > 1)
+	{
+# ifdef ECHILD
+	    int alive = TRUE;
+
+	    if (waitpid_errno == ECHILD)
+	    {
+		/*
+		 * When using 'vim -g', vim is forked and the child process is
+		 * no longer a child process but a sibling.  So waitpid()
+		 * fails with errno being ECHILD (No child processes).
+		 */
+		int waited;
+
+		sleep(0);
+		for (waited = 0; waited < 40; ++waited)
+		{
+		    /* Check whether the child process is still alive */
+		    if (kill(proc->pid, 0) != 0)
+		    {
+			alive = FALSE; /* the child process no longer exists */
+			break;
+		    }
+		    mch_delay(50L, FALSE); /* sleep 50ms */
+		}
+	    }
+	    if (alive)
+# endif
+	    {
+		kill(proc->pid, SIGKILL);
+		(void)waitpid(proc->pid, &pstat, 0);
+	    }
+	}
+    }
+#else  /* UNIX */
+    if (proc->hProc != NULL)
+    {
+	/* Give the child process a chance to exit normally */
+	if (WaitForSingleObject(proc->hProc, 1000) == WAIT_TIMEOUT)
+	    TerminateProcess(proc->hProc, 0);
+	CloseHandle(proc->hProc);
+    }
+#endif	/* UNIX */
+
+    free_proc_handle(idx);
+} /* wait_child */
+
+
+#if defined(UNIX) && defined(SIGALRM)
+/*
+ * Used to catch and ignore SIGALRM.
+ */
+/* ARGSUSED */
+    static RETSIGTYPE
+sigalarm_handler SIGDEFARG(sigarg)
+{
+    /* do nothing */
+    SIGRETURN;
+}
+#endif
+
+
+//FIXME set up SIGCHLD handler
+#if defined(UNIX)
+
+/* Addess of the previous SIGCHLD handler. */
+static sighandler_t old_sigchld_handler;
+
+
+/*
+ * SIGCHLD handler. Calls the next handler.
+ */
+    static void
+sigchld_handler(signum)
+    int signum;
+{
+    if (old_sigchld_handler)
+    {
+	old_sigchld_handler(signum);
+    }
+
+    SIGRETURN;
+}
+
+
+/*
+ * Installs the above SIGCHLD handler.
+ */
+    static void
+install_sigchld_handler(void)
+{
+    if (old_sigchld_handler)
+    {
+	return;	    /* already installed */
+    }
+
+#if defined(HAVE_SIGACTION)
+    struct sigaction sa, old_sa;
+
+    sigemptyset(&sa.sa_mask);
+    sa.sa_handler = &sigchld_handler;
+    sa.sa_flags = SA_NODEFER;
+    if (!sigaction(SIGCHLD, &sa, &old_sa)) {
+	(void)EMSG(_("EXXX: Cannot install SIGCHLD handler"));
+    }
+    old_sigchld_handler = old_sa.sa_handler;
+#else
+    old_sigchld_handler = signal(SIGCHLD, &sigchld_handler);
+    if (old_sigchld_handler == SIG_ERR) {
+	(void)EMSG(_("EXXX: Cannot install SIGCHLD handler"));
+    }
+#endif
+
+    if (old_sigchld_handler == SIG_IGN || old_sigchld_handler == SIG_DFL)
+    {
+	old_sigchld_handler = NULL;
+    }
+}
+
+#endif	/* UNIX */
+
 
 /*
  * Finds the next unused process slot in open3_proc.
@@ -606,5 +667,33 @@ free_proc_handle(idx)
 
     proc->use_pty = 0;
 
-    //FIXME free file descriptors and iobufs
+    if (proc->to_stdin.fd != -1)
+    {
+#if defined(UNIX)
+	close(proc->to_stdin.fd);
+#else	/* UNIX */
+	CloseHandle(proc->to_stdin.fd);
+#endif	/* UNIX */
+	proc->to_stdin.fd = -1;
+    }
+    if (proc->from_stdout.fd != -1)
+    {
+#if defined(UNIX)
+	close(proc->from_stdout.fd);
+#else	/* UNIX */
+	CloseHandle(proc->from_stdout.fd);
+#endif	/* UNIX */
+	proc->from_stdout.fd = -1;
+    }
+    if (proc->from_stderr.fd != -1)
+    {
+#if defined(UNIX)
+	close(proc->from_stderr.fd);
+#else	/* UNIX */
+	CloseHandle(proc->from_stderr.fd);
+#endif	/* UNIX */
+	proc->from_stderr.fd = -1;
+    }
+
+    //FIXME free iobufs
 }
