@@ -343,7 +343,6 @@ error:
  *
  * Returns: the pointer to the open3_proc_T struct on success, NULL on error.
  */
-    //FIXME (void) prefixes to function calls
     static open3_proc_T*
 init_proc_handle(proc_idx, cmd, args_len, args, env_len, env, use_pty)
     int proc_idx;
@@ -447,25 +446,25 @@ wait_child(idx)
 	struct sigaction sa, old;
 
 	/* Use sigaction() to limit the waiting time to two seconds. */
-	sigemptyset(&sa.sa_mask);
+	(void)sigemptyset(&sa.sa_mask);
 	sa.sa_handler = &sigalarm_handler;
 	sa.sa_flags = SA_NODEFER;
-	sigaction(SIGALRM, &sa, &old);
-	alarm(2); /* 2 sec timeout */
+	(void)sigaction(SIGALRM, &sa, &old);
+	(void)alarm(2); /* 2 sec timeout */
 
 	/* Block until the child process exits or until timer expires */
 	pid = waitpid(proc->pid, &pstat, 0);
 	waitpid_errno = errno;
 
 	/* cancel pending alarm if still there and restore signal */
-	alarm(0);
-	sigaction(SIGALRM, &old, NULL);
+	(void)alarm(0);
+	(void)sigaction(SIGALRM, &old, NULL);
 # else
 	int waited;
 
 	/* Can't use sigaction(), loop for two seconds.  First yield the CPU
 	 * to give the child process a chance to exit quickly. */
-	sleep(0);
+	(void)sleep(0);
 	for (waited = 0; waited < 40; ++waited)
 	{
 	    pid = waitpid(proc->pid, &pstat, WNOHANG);
@@ -494,7 +493,7 @@ wait_child(idx)
 		 */
 		int waited;
 
-		sleep(0);
+		(void)sleep(0);
 		for (waited = 0; waited < 40; ++waited)
 		{
 		    /* Check whether the child process is still alive */
@@ -509,7 +508,7 @@ wait_child(idx)
 	    if (alive)
 # endif
 	    {
-		kill(proc->pid, SIGKILL);
+		(void)kill(proc->pid, SIGKILL);
 		(void)waitpid(proc->pid, &pstat, 0);
 	    }
 	}
@@ -542,7 +541,6 @@ sigalarm_handler SIGDEFARG(sigarg)
 #endif
 
 
-//FIXME set up SIGCHLD handler
 #if defined(UNIX)
 
 /* Addess of the previous SIGCHLD handler. */
@@ -579,7 +577,7 @@ install_sigchld_handler(void)
 #if defined(HAVE_SIGACTION)
     struct sigaction sa, old_sa;
 
-    sigemptyset(&sa.sa_mask);
+    (void)sigemptyset(&sa.sa_mask);
     sa.sa_handler = &sigchld_handler;
     sa.sa_flags = SA_NODEFER;
     if (!sigaction(SIGCHLD, &sa, &old_sa)) {
@@ -670,7 +668,7 @@ free_proc_handle(idx)
     if (proc->to_stdin.fd != -1)
     {
 #if defined(UNIX)
-	close(proc->to_stdin.fd);
+	(void)close(proc->to_stdin.fd);
 #else	/* UNIX */
 	CloseHandle(proc->to_stdin.fd);
 #endif	/* UNIX */
@@ -679,7 +677,7 @@ free_proc_handle(idx)
     if (proc->from_stdout.fd != -1)
     {
 #if defined(UNIX)
-	close(proc->from_stdout.fd);
+	(void)close(proc->from_stdout.fd);
 #else	/* UNIX */
 	CloseHandle(proc->from_stdout.fd);
 #endif	/* UNIX */
@@ -688,7 +686,7 @@ free_proc_handle(idx)
     if (proc->from_stderr.fd != -1)
     {
 #if defined(UNIX)
-	close(proc->from_stderr.fd);
+	(void)close(proc->from_stderr.fd);
 #else	/* UNIX */
 	CloseHandle(proc->from_stderr.fd);
 #endif	/* UNIX */
